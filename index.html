@@ -98,9 +98,9 @@
                     Privacy-preserving digital identity verification using cutting-edge zk-SNARKs technology.
                 </p>
                 <div class="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
-                    <a href="#" class="bg-white text-indigo-950 hover:bg-gray-100 px-8 py-3 rounded-full font-semibold text-center transition">
+                    <button class="bg-white text-indigo-950 hover:bg-gray-100 px-8 py-3 rounded-full font-semibold text-center transition">
                         Get Early Access
-                    </a>
+                    </button>
                     <a href="#technology" class="border border-white text-white hover:bg-white hover:text-indigo-950 px-8 py-3 rounded-full font-semibold text-center transition">
                         Learn More
                     </a>
@@ -464,9 +464,9 @@
                 Be part of Indonesia's first zero-knowledge identity network. Get early access to our developer tools and testnet.
             </p>
             <div class="flex flex-col sm:flex-row justify-center space-y-4 sm:space-y-0 sm:space-x-4">
-                <a href="#" class="bg-white text-indigo-950 hover:bg-gray-100 px-8 py-3 rounded-full font-semibold transition">
+                <button class="bg-white text-indigo-950 hover:bg-gray-100 px-8 py-3 rounded-full font-semibold transition">
                     Sign Up for Updates
-                </a>
+                </button>
                 <a href="https://github.com/Indobit-io/public/blob/0a15ee43952dd10e4397c5aa56f0b20838e498f1/IndoBit_%20A%20Zero-Knowledge%20Identity%20Protocol%20for%20the%20Indonesian%20Web3%20Ecosystem%20-%20v1.pdf" class="border border-white text-white hover:bg-white hover:text-indigo-950 px-8 py-3 rounded-full font-semibold transition" target="_blank">
                     Developer Documentation
                 </a>
@@ -526,7 +526,92 @@
         </div>
     </footer>
 
+    <!-- Early Access Modal -->
+    <div id="earlyAccessModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-xl p-8 max-w-md w-full mx-4">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold">Get Early Access</h3>
+                <button id="closeModal" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="earlyAccessForm">
+                <div class="mb-4">
+                    <label for="email" class="block text-gray-700 mb-2">Email Address</label>
+                    <input type="email" id="email" required class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    <p id="emailError" class="text-red-500 text-sm mt-1 hidden">Please enter a valid email address</p>
+                </div>
+                <button type="submit" class="w-full bg-gradient-to-r from-blue-500 to-violet-600 text-white py-2 rounded-lg font-medium hover:opacity-90 transition">
+                    Submit
+                </button>
+            </form>
+        </div>
+    </div>
+
     <script>
+        // Early Access Modal
+        const earlyAccessModal = document.getElementById('earlyAccessModal');
+        const closeModal = document.getElementById('closeModal');
+        const earlyAccessForm = document.getElementById('earlyAccessForm');
+        const emailInput = document.getElementById('email');
+        const emailError = document.getElementById('emailError');
+
+        // Open modal when early access button is clicked
+        document.querySelectorAll('a[href="#"]').forEach(link => {
+            if (link.textContent.includes('Early Access')) {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    earlyAccessModal.classList.remove('hidden');
+                });
+            }
+        });
+
+        // Close modal
+        closeModal.addEventListener('click', () => {
+            earlyAccessModal.classList.add('hidden');
+        });
+
+        // Form submission
+        earlyAccessForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            
+            const email = emailInput.value.trim();
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            
+            if (!emailRegex.test(email)) {
+                emailError.classList.remove('hidden');
+                return;
+            }
+            
+            emailError.classList.add('hidden');
+            
+            // Here you would normally send the email to your backend
+            // For now we'll just show a success message
+            earlyAccessForm.innerHTML = `
+                <div class="text-center py-4">
+                    <i class="fas fa-check-circle text-green-500 text-5xl mb-4"></i>
+                    <h3 class="text-xl font-bold mb-2">Thank you!</h3>
+                    <p class="text-gray-600">We'll notify you when you get access.</p>
+                </div>
+            `;
+            
+            // Reset form after 3 seconds
+            setTimeout(() => {
+                earlyAccessModal.classList.add('hidden');
+                earlyAccessForm.innerHTML = `
+                    <div class="mb-4">
+                        <label for="email" class="block text-gray-700 mb-2">Email Address</label>
+                        <input type="email" id="email" required class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        <p id="emailError" class="text-red-500 text-sm mt-1 hidden">Please enter a valid email address</p>
+                    </div>
+                    <button type="submit" class="w-full bg-gradient-to-r from-blue-500 to-violet-600 text-white py-2 rounded-lg font-medium hover:opacity-90 transition">
+                        Submit
+                    </button>
+                `;
+                emailInput.value = '';
+            }, 3000);
+        });
+
         // Mobile menu toggle
         const mobileMenuButton = document.querySelector('.mobile-menu-button');
         const mobileMenu = document.querySelector('.mobile-menu');
