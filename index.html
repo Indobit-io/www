@@ -98,7 +98,7 @@
                     Privacy-preserving digital identity verification using cutting-edge zk-SNARKs technology.
                 </p>
                 <div class="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
-                    <button class="bg-white text-indigo-950 hover:bg-gray-100 px-8 py-3 rounded-full font-semibold text-center transition">
+                    <button onclick="document.getElementById('earlyAccessModal').classList.remove('hidden')" class="bg-white text-indigo-950 hover:bg-gray-100 px-8 py-3 rounded-full font-semibold text-center transition">
                         Get Early Access
                     </button>
                     <a href="#technology" class="border border-white text-white hover:bg-white hover:text-indigo-950 px-8 py-3 rounded-full font-semibold text-center transition">
@@ -464,7 +464,7 @@
                 Be part of Indonesia's first zero-knowledge identity network. Get early access to our developer tools and testnet.
             </p>
             <div class="flex flex-col sm:flex-row justify-center space-y-4 sm:space-y-0 sm:space-x-4">
-                <button class="bg-white text-indigo-950 hover:bg-gray-100 px-8 py-3 rounded-full font-semibold transition">
+                <button onclick="document.getElementById('earlyAccessModal').classList.remove('hidden')" class="bg-white text-indigo-950 hover:bg-gray-100 px-8 py-3 rounded-full font-semibold transition">
                     Sign Up for Updates
                 </button>
                 <a href="https://github.com/Indobit-io/public/blob/0a15ee43952dd10e4397c5aa56f0b20838e498f1/IndoBit_%20A%20Zero-Knowledge%20Identity%20Protocol%20for%20the%20Indonesian%20Web3%20Ecosystem%20-%20v1.pdf" class="border border-white text-white hover:bg-white hover:text-indigo-950 px-8 py-3 rounded-full font-semibold transition" target="_blank">
@@ -556,19 +556,16 @@
         const emailInput = document.getElementById('email');
         const emailError = document.getElementById('emailError');
 
-        // Open modal when early access button is clicked
-        document.querySelectorAll('a[href="#"]').forEach(link => {
-            if (link.textContent.includes('Early Access')) {
-                link.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    earlyAccessModal.classList.remove('hidden');
-                });
-            }
-        });
-
         // Close modal
         closeModal.addEventListener('click', () => {
             earlyAccessModal.classList.add('hidden');
+        });
+
+        // Close modal when clicking outside
+        earlyAccessModal.addEventListener('click', (e) => {
+            if (e.target === earlyAccessModal) {
+                earlyAccessModal.classList.add('hidden');
+            }
         });
 
         // Form submission
@@ -585,13 +582,12 @@
             
             emailError.classList.add('hidden');
             
-            // Here you would normally send the email to your backend
-            // For now we'll just show a success message
+            // Show success message
             earlyAccessForm.innerHTML = `
                 <div class="text-center py-4">
                     <i class="fas fa-check-circle text-green-500 text-5xl mb-4"></i>
                     <h3 class="text-xl font-bold mb-2">Thank you!</h3>
-                    <p class="text-gray-600">We'll notify you when you get access.</p>
+                    <p class="text-gray-600">We'll notify you when early access is available.</p>
                 </div>
             `;
             
