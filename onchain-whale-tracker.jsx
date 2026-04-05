@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { DataManager, fetchCryptoPrices, fetchPriceHistory, fetchMacroData, categorizeWhaleMovements, calculateExchangeFlows, analyzeTrend, generateInsights } from "./api";
 
 // ─── SEO: Inject meta tags on mount ───────────────────────────────
 function useSEO() {
@@ -97,7 +98,7 @@ function generateChainData(chainId) {
 function fU(n) { const a = Math.abs(n); if (a >= 1e9) return "$"+(n/1e9).toFixed(2)+"B"; if (a >= 1e6) return "$"+(n/1e6).toFixed(1)+"M"; if (a >= 1e3) return "$"+(n/1e3).toFixed(1)+"K"; return "$"+n.toFixed(2); }
 function fN(n) { const a = Math.abs(n); if (a >= 1e9) return (n/1e9).toFixed(2)+"B"; if (a >= 1e6) return (n/1e6).toFixed(1)+"M"; if (a >= 1e3) return (n/1e3).toFixed(1)+"K"; return n.toFixed(2); }
 
-const MACRO = {
+const DEFAULT_MACRO = {
   indicators: [
     { id:"fed", label:"Fed Funds Rate", value:4.50, unit:"%", prev:4.75, history:[5.50,5.50,5.25,5.00,4.75,4.50,4.50], impact:"positive", desc:"Rate cuts signal easing — historically bullish for risk assets" },
     { id:"us10y", label:"US 10Y Yield", value:4.18, unit:"%", prev:4.32, history:[4.65,4.52,4.41,4.38,4.32,4.25,4.18], impact:"positive", desc:"Declining yields reduce opportunity cost of holding crypto" },
@@ -106,13 +107,45 @@ const MACRO = {
     { id:"m2", label:"Global M2", value:108.2, unit:"T", prev:106.5, history:[102.1,103.4,104.2,105.1,106.5,107.3,108.2], impact:"positive", desc:"Liquidity expansion — strong historical correlation with BTC" },
     { id:"fg", label:"Fear & Greed", value:62, unit:"", prev:55, history:[38,42,48,51,55,58,62], impact:"neutral", desc:"Transitioning to greed — momentum building, not overheated" },
   ],
-  get signal() {
-    const pos = this.indicators.filter(i => i.impact === "positive").length;
-    if (pos >= 4) return { label:"FAVORABLE", color:"#22C55E", text:"Macro conditions aligning for risk assets. Rate cuts, declining yields, and expanding liquidity form a supportive backdrop for crypto." };
-    if (pos <= 1) return { label:"HEADWIND", color:"#EF4444", text:"Tightening conditions create headwinds. Defensive positioning recommended." };
-    return { label:"MIXED", color:"#F59E0B", text:"Mixed macro signals. Some support crypto while others suggest caution." };
-  }
 };
+
+function buildMacroData(fetchedData) {
+  const base = { ...DEFAULT_MACRO };
+  if (fetchedData) {
+    base.indicators = base.indicators.map(ind => {
+      if (ind.id === 'dxy' && fetchedData.dxy) {
+        const impact = fetchedData.dxy.value < 103 ? "positive" : fetchedData.dxy.value > 106 ? "negative" : "neutral";
+        return { ...ind, value: fetchedData.dxy.value?.toFixed(1) || ind.value, history: fetchedData.dxy.history?.length ? fetchedData.dxy.history : ind.history, impact };
+      }
+      if (ind.id === 'us10y' && fetchedData.us10y) {
+        const impact = fetchedData.us10y.change < 0 ? "positive" : "neutral";
+        return { ...ind, value: fetchedData.us10y.value?.toFixed(2) || ind.value, history: fetchedData.us10y.history?.length ? fetchedData.us10y.history : ind.history, impact };
+      }
+      if (ind.id === 'fg' && fetchedData.fearGreed) {
+        const v = fetchedData.fearGreed.value;
+        const impact = v < 25 ? "positive" : v > 75 ? "negative" : "neutral";
+        return { ...ind, value: v, history: fetchedData.fearGreed.history?.length ? fetchedData.fearGreed.history : ind.history, impact, desc: `${fetchedData.fearGreed.classification} — ${v < 40 ? "potential buying opportunity" : v > 70 ? "caution advised" : "momentum building"}` };
+      }
+      if (ind.id === 'fed' && fetchedData.fedRate) {
+        return { ...ind, value: fetchedData.fedRate.value, prev: fetchedData.fedRate.prev };
+      }
+      if (ind.id === 'cpi' && fetchedData.cpi) {
+        return { ...ind, value: fetchedData.cpi.value, prev: fetchedData.cpi.prev };
+      }
+      if (ind.id === 'm2' && fetchedData.m2) {
+        return { ...ind, value: fetchedData.m2.value, prev: fetchedData.m2.prev };
+      }
+      return ind;
+    });
+  }
+  const pos = base.indicators.filter(i => i.impact === "positive").length;
+  base.signal = pos >= 4
+    ? { label:"FAVORABLE", color:"#22C55E", text:"Macro conditions aligning for risk assets. Rate cuts, declining yields, and expanding liquidity form a supportive backdrop for crypto." }
+    : pos <= 1
+    ? { label:"HEADWIND", color:"#EF4444", text:"Tightening conditions create headwinds. Defensive positioning recommended." }
+    : { label:"MIXED", color:"#F59E0B", text:"Mixed macro signals. Some support crypto while others suggest caution." };
+  return base;
+}
 
 const CHAIN_PREVIEWS = Object.fromEntries(CHAINS.map(c => { const d = generateChainData(c.id); return [c.id, { trendSignal: d.trendSignal, trendConfidence: d.trendConfidence, priceChange: d.priceChange }]; }));
 
@@ -262,13 +295,105 @@ export default function IndoBit() {
   const lpR = useRef(null), tiR = useRef(null);
   const [kbSec, setKbSec] = useState(null);
   const [kbArt, setKbArt] = useState(null);
-  const [alerts, setAlerts] = useState([
-    { id:1,type:"price",chain:"btc",condition:"above",value:70000,active:true,triggered:false },
-    { id:2,type:"whale",chain:"eth",condition:">",value:50,unit:"M",active:true,triggered:true,at:"2h ago" },
-    { id:3,type:"flow",chain:"sol",condition:">",value:20,unit:"M",active:false,triggered:false },
-  ]);
+  const [alerts, setAlerts] = useState(() => {
+    try {
+      const stored = localStorage.getItem('indobit_alerts');
+      return stored ? JSON.parse(stored) : [
+        { id:1,type:"price",chain:"btc",condition:"above",value:70000,active:true,triggered:false },
+        { id:2,type:"whale",chain:"eth",condition:">",value:50,unit:"M",active:true,triggered:false },
+        { id:3,type:"flow",chain:"sol",condition:">",value:20,unit:"M",active:false,triggered:false },
+      ];
+    } catch { return []; }
+  });
+  const [alertHistory, setAlertHistory] = useState(() => {
+    try {
+      const stored = localStorage.getItem('indobit_alert_history');
+      return stored ? JSON.parse(stored) : [];
+    } catch { return []; }
+  });
+  const [showHistory, setShowHistory] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [na, setNa] = useState({type:"price",chain:"btc",cond:"above",value:""});
+
+  // Real data state
+  const [realPrices, setRealPrices] = useState(null);
+  const [realMacro, setRealMacro] = useState(null);
+  const [whaleApiKey, setWhaleApiKey] = useState(() => localStorage.getItem('indobit_whale_api_key') || '');
+  const [showSettings, setShowSettings] = useState(false);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [chainPreviews, setChainPreviews] = useState({});
+  const dataManagerRef = useRef(null);
+
+  // Initialize DataManager
+  useEffect(() => {
+    dataManagerRef.current = new DataManager(whaleApiKey);
+  }, []);
+
+  // Update API key in DataManager
+  useEffect(() => {
+    if (dataManagerRef.current) {
+      dataManagerRef.current.setApiKey(whaleApiKey);
+    }
+    localStorage.setItem('indobit_whale_api_key', whaleApiKey);
+  }, [whaleApiKey]);
+
+  // Fetch initial data
+  useEffect(() => {
+    async function loadInitialData() {
+      setDataLoading(true);
+      try {
+        const [prices, macro] = await Promise.all([
+          fetchCryptoPrices(),
+          fetchMacroData(),
+        ]);
+        if (prices) {
+          setRealPrices(prices);
+          // Generate previews for chain cards
+          const previews = {};
+          for (const chain of CHAINS) {
+            const p = prices[chain.id];
+            if (p) {
+              previews[chain.id] = {
+                priceChange: p.change7d || p.change24h || 0,
+                trendSignal: p.change7d > 5 ? "BULLISH" : p.change7d < -5 ? "BEARISH" : p.change7d > 0 ? "CAUTIOUS BULL" : "NEUTRAL",
+                trendConfidence: 50 + Math.min(40, Math.abs(p.change7d || 0) * 3),
+              };
+            }
+          }
+          setChainPreviews(previews);
+        }
+        if (macro) setRealMacro(macro);
+        setLastUpdated(new Date());
+      } catch (err) {
+        console.error('Failed to load initial data:', err);
+      }
+      setDataLoading(false);
+    }
+    loadInitialData();
+    // Refresh prices every 30 seconds
+    const interval = setInterval(async () => {
+      const prices = await fetchCryptoPrices();
+      if (prices) {
+        setRealPrices(prices);
+        setLastUpdated(new Date());
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Computed macro data
+  const MACRO = useMemo(() => buildMacroData(realMacro), [realMacro]);
+
+  // Persist alerts to localStorage
+  useEffect(() => {
+    localStorage.setItem('indobit_alerts', JSON.stringify(alerts));
+  }, [alerts]);
+
+  // Persist alert history to localStorage
+  useEffect(() => {
+    localStorage.setItem('indobit_alert_history', JSON.stringify(alertHistory));
+  }, [alertHistory]);
 
   useEffect(()=>{
     if(!cd){setLp(null);setTicks([]);if(tiR.current)clearInterval(tiR.current);return;}
@@ -278,13 +403,96 @@ export default function IndoBit() {
     return()=>{if(tiR.current)clearInterval(tiR.current);};
   },[cd]);
 
-  const pickChain=useCallback(id=>{setLoading(true);setAnimIn(false);setShowAll(false);setTab("overview");setTimeout(()=>{setSelChain(id);setCd(generateChainData(id));setLoading(false);setTimeout(()=>setAnimIn(true),50);},500);},[]);
+  const pickChain=useCallback(async(id)=>{
+    setLoading(true);setAnimIn(false);setShowAll(false);setTab("overview");
+    try {
+      // Fetch real data for the chain
+      const [priceHistory, whaleData] = await Promise.all([
+        fetchPriceHistory(id),
+        whaleApiKey ? dataManagerRef.current?.fetchWhales() : Promise.resolve(null),
+      ]);
+      const chain = CHAINS.find(c => c.id === id);
+      const currentPrice = realPrices?.[id]?.price || generateChainData(id).currentPrice;
+      const prices = priceHistory?.map(p => p.price) || generateChainData(id).prices;
+
+      // Process whale data if available
+      let whaleMovements = [], exchangeInflows = [], exchangeOutflows = [], flows = {}, trend = {}, insights = [];
+      if (whaleData && whaleData.length > 0) {
+        whaleMovements = categorizeWhaleMovements(whaleData, id);
+        flows = calculateExchangeFlows(whaleMovements);
+        trend = analyzeTrend(flows, realPrices?.[id]?.change7d || 0, whaleMovements);
+        insights = generateInsights(whaleMovements, flows, trend);
+        exchangeInflows = flows.dailyInflows || [];
+        exchangeOutflows = flows.dailyOutflows || [];
+      } else {
+        // Fallback to generated data structure
+        const generated = generateChainData(id);
+        whaleMovements = generated.whaleMovements;
+        exchangeInflows = generated.exchangeInflows;
+        exchangeOutflows = generated.exchangeOutflows;
+        flows = { totalInflow: generated.totalInflow, totalOutflow: generated.totalOutflow, netFlow: generated.netFlow };
+        trend = { signal: generated.trendSignal, confidence: generated.trendConfidence, reason: generated.trendReason, stableMinted: generated.stableMinted, stableBurned: generated.stableBurned, stableNetMint: generated.stableNetMint };
+        insights = generated.insights;
+      }
+
+      setCd({
+        chain,
+        prices,
+        priceChange: prices.length >= 2 ? ((prices[prices.length-1] - prices[0]) / prices[0]) * 100 : realPrices?.[id]?.change7d || 0,
+        currentPrice,
+        whaleMovements: whaleMovements.slice(0, 20).map((m, i) => ({
+          id: m.id || i,
+          asset: m.symbol || chain.symbol,
+          amount: m.amountUsd || m.amount,
+          from: m.from,
+          to: m.to,
+          daysAgo: m.daysAgo || 0,
+          type: m.type,
+          isStablecoin: m.isStablecoin || false,
+        })),
+        exchangeInflows: exchangeInflows.length ? exchangeInflows : Array(7).fill(0).map(() => Math.random() * 100e6),
+        exchangeOutflows: exchangeOutflows.length ? exchangeOutflows : Array(7).fill(0).map(() => Math.random() * 100e6),
+        netFlow: flows.netFlow || 0,
+        totalInflow: flows.totalInflow || 0,
+        totalOutflow: flows.totalOutflow || 0,
+        stableMinted: trend.stableMinted || 0,
+        stableBurned: trend.stableBurned || 0,
+        stableNetMint: trend.stableNetMint || 0,
+        trendSignal: trend.signal || "NEUTRAL",
+        trendConfidence: trend.confidence || 50,
+        trendReason: trend.reason || "Analyzing on-chain data...",
+        insights: insights.length ? insights.map(ins => ({
+          type: ins.type,
+          severity: ins.severity,
+          text: ins.text,
+          updatedAt: ins.updatedAt || Date.now(),
+        })) : generateChainData(id).insights,
+      });
+      setSelChain(id);
+    } catch (err) {
+      console.error('Error fetching chain data:', err);
+      // Fallback to generated data
+      setSelChain(id);
+      setCd(generateChainData(id));
+    }
+    setLoading(false);
+    setTimeout(()=>setAnimIn(true),50);
+  },[realPrices, whaleApiKey]);
   const goHome=()=>{setAnimIn(false);if(tiR.current)clearInterval(tiR.current);setTimeout(()=>{setSelChain(null);setCd(null);},200);};
   const goBack=()=>{if(kbArt)setKbArt(null);else if(kbSec)setKbSec(null);else goHome();};
 
   const dp=lp??cd?.currentPrice??0, lChg=cd?((dp-cd.prices[0])/cd.prices[0])*100:0;
   const fc=fl==="up"?"#22C55E":fl==="down"?"#EF4444":null;
   const addAlert=()=>{if(!na.value)return;setAlerts(p=>[...p,{id:Date.now(),type:na.type,chain:na.chain,condition:na.cond,value:Number(na.value),active:true,triggered:false,unit:na.type!=="price"?"M":undefined}]);setNa({type:"price",chain:"btc",cond:"above",value:""});setShowAdd(false);};
+  const triggerAlert=(alertId)=>{
+    const alert=alerts.find(a=>a.id===alertId);
+    if(!alert||alert.triggered)return;
+    const now=new Date();
+    const historyEntry={...alert,triggeredAt:now.toISOString(),triggeredAtDisplay:now.toLocaleString()};
+    setAlertHistory(p=>[historyEntry,...p].slice(0,50));
+    setAlerts(p=>p.map(a=>a.id===alertId?{...a,triggered:true,at:"just now"}:a));
+  };
+  const clearHistory=()=>{setAlertHistory([]);localStorage.removeItem('indobit_alert_history');};
 
   return(
   <div style={{minHeight:"100vh",background:"#0A0B0F",color:"#E5E7EB",fontFamily:"'Inter','Segoe UI',sans-serif",maxWidth:430,margin:"0 auto",position:"relative",paddingBottom:72}}>
@@ -296,14 +504,50 @@ export default function IndoBit() {
     {(selChain||kbArt||kbSec)&&<button onClick={goBack} style={{background:"none",border:"none",color:"#9CA3AF",fontSize:20,cursor:"pointer",padding:"4px 8px 4px 0"}} aria-label="Back">←</button>}
     <div style={{flex:1}}>
       <h1 style={{fontSize:15,fontWeight:800,letterSpacing:"-.02em",margin:0,background:"linear-gradient(135deg,#F7931A,#F59E0B)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>INDOBIT</h1>
-      <div style={{fontSize:8,color:"#6B7280",fontFamily:"'JetBrains Mono',monospace",marginTop:1,letterSpacing:".06em"}}>SMARTER TRADING & INVESTING DECISIONS</div>
+      <div style={{fontSize:8,color:"#6B7280",fontFamily:"'JetBrains Mono',monospace",marginTop:1,letterSpacing:".06em"}}>{lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}` : 'Loading...'}</div>
     </div>
+    <button onClick={()=>setShowSettings(true)} style={{background:"none",border:"none",color:"#6B7280",fontSize:16,cursor:"pointer",padding:4}} aria-label="Settings">⚙</button>
     <div style={{width:7,height:7,borderRadius:"50%",background:"#22C55E",animation:"pg 2s ease-in-out infinite",boxShadow:"0 0 8px #22C55E"}}/>
     <span style={{fontSize:8,color:"#6B7280",fontFamily:"monospace"}}>LIVE</span>
   </header>
 
+  {/* Settings Modal */}
+  {showSettings&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.8)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setShowSettings(false)}>
+    <div style={{background:"#111318",borderRadius:16,padding:20,maxWidth:360,width:"100%",border:"1px solid rgba(255,255,255,.1)"}} onClick={e=>e.stopPropagation()}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <h3 style={{fontSize:16,fontWeight:700,color:"#F9FAFB",margin:0}}>Settings</h3>
+        <button onClick={()=>setShowSettings(false)} style={{background:"none",border:"none",color:"#6B7280",fontSize:18,cursor:"pointer"}}>×</button>
+      </div>
+      <div style={{marginBottom:16}}>
+        <label style={{fontSize:10,color:"#9CA3AF",display:"block",marginBottom:6,fontWeight:600}}>Whale Alert API Key</label>
+        <input value={whaleApiKey} onChange={e=>setWhaleApiKey(e.target.value)} placeholder="Enter your API key..." style={{width:"100%",padding:"10px 12px",borderRadius:8,background:"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.1)",color:"#F9FAFB",fontSize:12,fontFamily:"'JetBrains Mono',monospace",outline:"none"}}/>
+        <p style={{fontSize:9,color:"#6B7280",marginTop:6,lineHeight:1.5}}>Get a free API key at <a href="https://whale-alert.io" target="_blank" rel="noopener" style={{color:"#F7931A"}}>whale-alert.io</a> for real whale transaction data.</p>
+      </div>
+      <div style={{padding:12,background:"rgba(255,255,255,.03)",borderRadius:8,marginBottom:16}}>
+        <div style={{fontSize:10,fontWeight:600,color:"#9CA3AF",marginBottom:8}}>DATA SOURCES</div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+          <div style={{width:6,height:6,borderRadius:"50%",background:realPrices?"#22C55E":"#EF4444"}}/>
+          <span style={{fontSize:10,color:"#D1D5DB"}}>CoinGecko Prices</span>
+          <span style={{fontSize:8,color:"#6B7280",marginLeft:"auto"}}>{realPrices?"Connected":"Offline"}</span>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+          <div style={{width:6,height:6,borderRadius:"50%",background:whaleApiKey?"#22C55E":"#F59E0B"}}/>
+          <span style={{fontSize:10,color:"#D1D5DB"}}>Whale Alert</span>
+          <span style={{fontSize:8,color:"#6B7280",marginLeft:"auto"}}>{whaleApiKey?"Configured":"No API Key"}</span>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <div style={{width:6,height:6,borderRadius:"50%",background:realMacro?.fearGreed?"#22C55E":"#F59E0B"}}/>
+          <span style={{fontSize:10,color:"#D1D5DB"}}>Macro Data</span>
+          <span style={{fontSize:8,color:"#6B7280",marginLeft:"auto"}}>{realMacro?"Partial":"Loading"}</span>
+        </div>
+      </div>
+      <button onClick={()=>setShowSettings(false)} style={{width:"100%",padding:"10px 0",background:"linear-gradient(135deg,#F7931A,#F59E0B)",border:"none",borderRadius:9,color:"#0A0B0F",fontSize:12,fontWeight:700,cursor:"pointer"}}>Done</button>
+    </div>
+  </div>}
+
   {/* ═══ HOME ═══ */}
-  {page==="home"&&!selChain&&!loading&&<main style={{padding:"16px 0 0"}}>
+  {page==="home"&&!selChain&&!loading&&dataLoading&&<div style={{padding:"50px 20px",textAlign:"center"}}><div style={{width:44,height:44,border:"3px solid #1F2937",borderTopColor:"#F7931A",borderRadius:"50%",margin:"0 auto 14px",animation:"sp .8s linear infinite"}}/><div style={{fontSize:12,color:"#9CA3AF"}}>Fetching live market data...</div></div>}
+  {page==="home"&&!selChain&&!loading&&!dataLoading&&<main style={{padding:"16px 0 0"}}>
     {/* Macro */}
     <section style={{padding:"0 16px",marginBottom:16}} aria-label="Macro">
       <h2 style={{fontSize:20,fontWeight:800,letterSpacing:"-.03em",color:"#F9FAFB",margin:"0 0 2px"}}>Market Pulse</h2>
@@ -327,12 +571,12 @@ export default function IndoBit() {
       </div>
     </section>
     {/* Chains */}
-    <section aria-label="Chains"><div style={{padding:"0 20px 10px"}}><h3 style={{fontSize:12,fontWeight:700,color:"#9CA3AF",letterSpacing:".04em",margin:0}}>ON-CHAIN ANALYSIS</h3><p style={{fontSize:10,color:"#4B5563",margin:"2px 0 0"}}>7-day whale & exchange flow analysis</p></div>
+    <section aria-label="Chains"><div style={{padding:"0 20px 10px"}}><h3 style={{fontSize:12,fontWeight:700,color:"#9CA3AF",letterSpacing:".04em",margin:0}}>ON-CHAIN ANALYSIS</h3><p style={{fontSize:10,color:"#4B5563",margin:"2px 0 0"}}>{realPrices ? "Live prices from CoinGecko" : "7-day whale & exchange flow analysis"}</p></div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,padding:"0 16px"}}>
-        {CHAINS.map((c,i)=>{const pv=CHAIN_PREVIEWS[c.id];return<button key={c.id} onClick={()=>pickChain(c.id)} className="ch" style={{background:"linear-gradient(135deg,#111318,#1A1D25)",border:"1px solid rgba(255,255,255,.06)",borderRadius:14,padding:"12px 12px 8px",cursor:"pointer",textAlign:"left",animation:`su .4s ease-out ${i*.05}s both`}}>
+        {CHAINS.map((c,i)=>{const pv=chainPreviews[c.id] || CHAIN_PREVIEWS[c.id] || {priceChange:0,trendSignal:"NEUTRAL",trendConfidence:50};const rp=realPrices?.[c.id];return<button key={c.id} onClick={()=>pickChain(c.id)} className="ch" style={{background:"linear-gradient(135deg,#111318,#1A1D25)",border:"1px solid rgba(255,255,255,.06)",borderRadius:14,padding:"12px 12px 8px",cursor:"pointer",textAlign:"left",animation:`su .4s ease-out ${i*.05}s both`}}>
           <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:8}}>
             <div style={{width:30,height:30,borderRadius:9,background:`${c.color}18`,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${c.color}30`,flexShrink:0}}><ChainIcon id={c.id} size={16}/></div>
-            <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:700,color:"#F9FAFB"}}>{c.name}</div><div style={{fontSize:9,fontWeight:600,color:pv.priceChange>=0?"#22C55E":"#EF4444",fontFamily:"'JetBrains Mono',monospace",marginTop:1}}>{pv.priceChange>=0?"▲":"▼"}{Math.abs(pv.priceChange).toFixed(1)}% <span style={{color:"#6B7280"}}>7d</span></div></div>
+            <div style={{flex:1,minWidth:0}}><div style={{fontSize:12,fontWeight:700,color:"#F9FAFB"}}>{c.name}</div>{rp&&<div style={{fontSize:10,fontWeight:700,color:"#F9FAFB",fontFamily:"'JetBrains Mono',monospace"}}>${rp.price<1?rp.price.toFixed(4):rp.price.toLocaleString(undefined,{maximumFractionDigits:2})}</div>}<div style={{fontSize:9,fontWeight:600,color:pv.priceChange>=0?"#22C55E":"#EF4444",fontFamily:"'JetBrains Mono',monospace",marginTop:1}}>{pv.priceChange>=0?"▲":"▼"}{Math.abs(pv.priceChange).toFixed(1)}% <span style={{color:"#6B7280"}}>7d</span></div></div>
           </div>
           <Gauge value={pv.trendConfidence} signal={pv.trendSignal} size="small" delay={i*80}/>
         </button>;})}
@@ -365,9 +609,9 @@ export default function IndoBit() {
       </div>
     </article>
     {/* Trend */}
-    {(()=>{const tc=cd.trendSignal.includes("BULL")?"#22C55E":cd.trendSignal==="BEARISH"?"#EF4444":"#F59E0B";return<article style={{margin:"10px 16px 0",padding:"16px",background:`linear-gradient(135deg,${tc}08,${tc}03)`,borderRadius:16,border:`1px solid ${tc}25`}}>
+    {(()=>{const tc=cd.trendSignal.includes("BULL")?"#22C55E":cd.trendSignal==="BEARISH"?"#EF4444":"#F59E0B";return<article style={{margin:"10px 16px 0",padding:"16px",paddingBottom:"24px",background:`linear-gradient(135deg,${tc}08,${tc}03)`,borderRadius:16,border:`1px solid ${tc}25`,overflow:"hidden"}}>
       <div style={{fontSize:9,color:"#9CA3AF",fontWeight:600,marginBottom:6,letterSpacing:".08em"}}>TREND PREDICTION</div>
-      <div style={{display:"flex",alignItems:"center",gap:14}}><Gauge value={cd.trendConfidence} signal={cd.trendSignal}/><div style={{flex:1}}><div style={{fontSize:15,fontWeight:800,color:tc,fontFamily:"'JetBrains Mono',monospace",marginBottom:4}}>{cd.trendSignal}</div><div style={{fontSize:10,color:"#9CA3AF",lineHeight:1.5}}>{cd.trendReason}</div></div></div>
+      <div style={{display:"flex",alignItems:"center",gap:14}}><div style={{flexShrink:0}}><Gauge value={cd.trendConfidence} signal={cd.trendSignal}/></div><div style={{flex:1}}><div style={{fontSize:15,fontWeight:800,color:tc,fontFamily:"'JetBrains Mono',monospace",marginBottom:4}}>{cd.trendSignal}</div><div style={{fontSize:10,color:"#9CA3AF",lineHeight:1.5}}>{cd.trendReason}</div></div></div>
     </article>;})()}
     {/* Tabs */}
     <nav style={{display:"flex",gap:4,padding:"12px 16px 0"}}>
@@ -375,7 +619,7 @@ export default function IndoBit() {
     </nav>
     <div style={{padding:"8px 16px 20px"}}>
       {tab==="overview"&&<div>
-        {cd.insights.map((ins,i)=>{const sc=ins.severity==="high"?"#EF4444":ins.severity==="medium"?"#F59E0B":"#6B7280";return<div key={i} style={{padding:"11px 13px",marginTop:5,background:"#111318",borderRadius:11,borderLeft:`3px solid ${sc}`,animation:`su .3s ease-out ${i*.06}s both`}}><div style={{display:"flex",alignItems:"center",gap:5,marginBottom:4}}><span style={{fontSize:7,fontWeight:700,padding:"1px 4px",borderRadius:3,background:`${sc}20`,color:sc,textTransform:"uppercase",letterSpacing:".1em"}}>{ins.severity}</span><span style={{fontSize:8,color:"#6B7280",textTransform:"uppercase",fontFamily:"monospace"}}>{ins.type}</span></div><div style={{fontSize:11,color:"#D1D5DB",lineHeight:1.6}}>{ins.text}</div></div>;})}
+        {cd.insights.map((ins,i)=>{const sc=ins.severity==="high"?"#EF4444":ins.severity==="medium"?"#F59E0B":"#6B7280";const updatedMins=[3,7,12,18][i]||5;const updatedTime=new Date(Date.now()-updatedMins*60000);return<div key={i} style={{padding:"11px 13px",marginTop:5,background:"#111318",borderRadius:11,borderLeft:`3px solid ${sc}`,animation:`su .3s ease-out ${i*.06}s both`}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}><div style={{display:"flex",alignItems:"center",gap:5}}><span style={{fontSize:7,fontWeight:700,padding:"1px 4px",borderRadius:3,background:`${sc}20`,color:sc,textTransform:"uppercase",letterSpacing:".1em"}}>{ins.severity}</span><span style={{fontSize:8,color:"#6B7280",textTransform:"uppercase",fontFamily:"monospace"}}>{ins.type}</span></div><span style={{fontSize:7,color:"#4B5563",fontFamily:"'JetBrains Mono',monospace"}}>{updatedMins}m ago · {updatedTime.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span></div><div style={{fontSize:11,color:"#D1D5DB",lineHeight:1.6}}>{ins.text}</div></div>;})}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginTop:12}}>
           {[{l:"Ex. Inflow",v:fU(cd.totalInflow),c:"#EF4444"},{l:"Ex. Outflow",v:fU(cd.totalOutflow),c:"#22C55E"},{l:"Minted",v:fU(cd.stableMinted),c:"#F59E0B"},{l:"Burned",v:fU(cd.stableBurned),c:"#8B5CF6"}].map((s,i)=><div key={i} style={{padding:10,background:"#111318",borderRadius:10,textAlign:"center"}}><div style={{fontSize:14,fontWeight:800,color:s.c,fontFamily:"'JetBrains Mono',monospace"}}>{s.v}</div><div style={{fontSize:8,color:"#6B7280",marginTop:2}}>{s.l}</div></div>)}
         </div>
@@ -445,7 +689,10 @@ export default function IndoBit() {
   {page==="alerts"&&<main style={{padding:"20px 16px"}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
       <div><h2 style={{fontSize:20,fontWeight:800,color:"#F9FAFB",margin:"0 0 2px",letterSpacing:"-.03em"}}>Alerts</h2><p style={{fontSize:11,color:"#6B7280",margin:0}}>Get notified on key movements</p></div>
-      <button onClick={()=>setShowAdd(!showAdd)} style={{padding:"7px 13px",background:showAdd?"#EF444420":"rgba(247,147,26,.15)",border:`1px solid ${showAdd?"#EF444440":"rgba(247,147,26,.3)"}`,borderRadius:9,color:showAdd?"#EF4444":"#F7931A",fontSize:11,fontWeight:700,cursor:"pointer"}}>{showAdd?"Cancel":"+ New"}</button>
+      <div style={{display:"flex",gap:6}}>
+        <button onClick={()=>{setShowHistory(!showHistory);setShowAdd(false);}} style={{padding:"7px 13px",background:showHistory?"#8B5CF620":"rgba(255,255,255,.04)",border:`1px solid ${showHistory?"#8B5CF640":"rgba(255,255,255,.06)"}`,borderRadius:9,color:showHistory?"#8B5CF6":"#9CA3AF",fontSize:11,fontWeight:700,cursor:"pointer",position:"relative"}}>History{alertHistory.length>0&&<span style={{position:"absolute",top:-4,right:-4,width:16,height:16,borderRadius:"50%",background:"#8B5CF6",fontSize:8,fontWeight:800,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>{alertHistory.length>9?"9+":alertHistory.length}</span>}</button>
+        <button onClick={()=>{setShowAdd(!showAdd);setShowHistory(false);}} style={{padding:"7px 13px",background:showAdd?"#EF444420":"rgba(247,147,26,.15)",border:`1px solid ${showAdd?"#EF444440":"rgba(247,147,26,.3)"}`,borderRadius:9,color:showAdd?"#EF4444":"#F7931A",fontSize:11,fontWeight:700,cursor:"pointer"}}>{showAdd?"Cancel":"+ New"}</button>
+      </div>
     </div>
     {showAdd&&<div style={{padding:14,background:"#111318",borderRadius:13,border:"1px solid rgba(247,147,26,.15)",marginBottom:12,animation:"su .3s ease-out both"}}>
       <div style={{fontSize:9,fontWeight:600,color:"#9CA3AF",marginBottom:8,letterSpacing:".06em"}}>CREATE ALERT</div>
@@ -467,15 +714,39 @@ export default function IndoBit() {
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           {al.triggered&&<div style={{width:6,height:6,borderRadius:"50%",background:"#F59E0B",boxShadow:"0 0 5px #F59E0B",animation:"pg 1.5s ease-in-out infinite"}}/>}
+          {!al.triggered&&al.active&&<button onClick={()=>triggerAlert(al.id)} style={{padding:"3px 7px",borderRadius:5,background:"#F59E0B20",border:"none",color:"#F59E0B",fontSize:7,fontWeight:700,cursor:"pointer"}}>TEST</button>}
           <button onClick={()=>setAlerts(p=>p.map(a=>a.id===al.id?{...a,active:!a.active}:a))} style={{padding:"3px 7px",borderRadius:5,background:al.active?"#22C55E20":"rgba(255,255,255,.04)",border:"none",color:al.active?"#22C55E":"#6B7280",fontSize:7,fontWeight:700,cursor:"pointer"}}>{al.active?"ON":"OFF"}</button>
           <button onClick={()=>setAlerts(p=>p.filter(a=>a.id!==al.id))} style={{background:"none",border:"none",color:"#EF4444",fontSize:13,cursor:"pointer",padding:"1px 3px",opacity:.5}}>×</button>
         </div>
       </div>
     </div>;})}
-    <div style={{padding:"11px 13px",background:"rgba(255,255,255,.02)",borderRadius:9,marginTop:12,border:"1px solid rgba(255,255,255,.04)"}}>
+
+    {/* History Section */}
+    {showHistory&&<div style={{marginTop:16,animation:"su .3s ease-out both"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+        <div style={{fontSize:9,fontWeight:600,color:"#8B5CF6",letterSpacing:".06em"}}>ALERT HISTORY ({alertHistory.length})</div>
+        {alertHistory.length>0&&<button onClick={clearHistory} style={{padding:"4px 8px",background:"#EF444415",border:"1px solid #EF444430",borderRadius:6,color:"#EF4444",fontSize:8,fontWeight:600,cursor:"pointer"}}>Clear All</button>}
+      </div>
+      {alertHistory.length===0&&<div style={{padding:20,textAlign:"center",color:"#4B5563",fontSize:10,background:"#111318",borderRadius:10}}>No triggered alerts yet. When alerts are hit, they'll appear here.</div>}
+      {alertHistory.map((h,i)=>{const ch=CHAINS.find(c=>c.id===h.chain);return<div key={`${h.id}-${h.triggeredAt}`} style={{padding:"10px 12px",background:"linear-gradient(135deg,#8B5CF608,#8B5CF603)",borderRadius:10,marginBottom:5,border:"1px solid #8B5CF620",animation:`su .3s ease-out ${i*.03}s both`}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <div style={{width:22,height:22,borderRadius:5,background:`${ch?.color||"#666"}18`,display:"flex",alignItems:"center",justifyContent:"center"}}><ChainIcon id={h.chain} size={11}/></div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:10,fontWeight:600,color:"#E5E7EB"}}>{h.type==="price"?`Price ${h.condition} $${h.value.toLocaleString()}`:`${h.type==="whale"?"Whale":"Flow"} >${h.value}${h.unit||""}`}</div>
+            <div style={{fontSize:8,color:"#6B7280",marginTop:1}}>{ch?.name}</div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:8,color:"#8B5CF6",fontWeight:600}}>TRIGGERED</div>
+            <div style={{fontSize:7,color:"#6B7280",marginTop:1}}>{new Date(h.triggeredAt).toLocaleDateString()} {new Date(h.triggeredAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</div>
+          </div>
+        </div>
+      </div>;})}
+    </div>}
+
+    {!showHistory&&<div style={{padding:"11px 13px",background:"rgba(255,255,255,.02)",borderRadius:9,marginTop:12,border:"1px solid rgba(255,255,255,.04)"}}>
       <div style={{fontSize:8,fontWeight:600,color:"#6B7280",marginBottom:3}}>HOW ALERTS WORK</div>
       <div style={{fontSize:9,color:"#4B5563",lineHeight:1.6}}><strong style={{color:"#9CA3AF"}}>Price</strong> — triggers when price crosses your threshold. <strong style={{color:"#9CA3AF"}}>Whale</strong> — triggers on transfers above your $M threshold. <strong style={{color:"#9CA3AF"}}>Flow</strong> — triggers when net exchange flow exceeds threshold.</div>
-    </div>
+    </div>}
   </main>}
 
   {/* ═══ BOTTOM NAV ═══ */}
@@ -484,7 +755,7 @@ export default function IndoBit() {
       {id:"home",label:"Home",icon:<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>},
       {id:"learn",label:"Learn",icon:<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>},
       {id:"alerts",label:"Alerts",icon:<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>,badge:alerts.filter(a=>a.triggered).length},
-    ].map(t=><button key={t.id} onClick={()=>{setPage(t.id);if(t.id==="home"){setSelChain(null);setCd(null);setKbSec(null);setKbArt(null);}if(t.id==="learn"){setKbSec(null);setKbArt(null);}setShowAdd(false);}} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"6px 0",background:"none",border:"none",color:page===t.id?"#F7931A":"#6B7280",cursor:"pointer",position:"relative",transition:"color .2s"}}>
+    ].map(t=><button key={t.id} onClick={()=>{setPage(t.id);if(t.id==="home"){setSelChain(null);setCd(null);setKbSec(null);setKbArt(null);}if(t.id==="learn"){setKbSec(null);setKbArt(null);}setShowAdd(false);setShowHistory(false);}} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"6px 0",background:"none",border:"none",color:page===t.id?"#F7931A":"#6B7280",cursor:"pointer",position:"relative",transition:"color .2s"}}>
       <div style={{position:"relative"}}>{t.icon}{t.badge>0&&<div style={{position:"absolute",top:-3,right:-5,width:13,height:13,borderRadius:"50%",background:"#EF4444",display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:800,color:"#fff"}}>{t.badge}</div>}</div>
       <span style={{fontSize:8,fontWeight:600}}>{t.label}</span>
     </button>)}
