@@ -7,10 +7,9 @@ async function getData(): Promise<ApiDataResponse | null> {
   try {
     // In production use absolute URL; in dev use relative
     const baseUrl =
-      process.env.NEXT_PUBLIC_BASE_URL ??
-      (process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : "http://localhost:3000");
+      process.env.NODE_ENV === "production"
+        ? "https://www-livid-pi.vercel.app"
+        : "http://localhost:3000";
 
     const res = await fetch(`${baseUrl}/api/data`, {
       next: { revalidate: 60 }, // Cache for 60s, ISR
