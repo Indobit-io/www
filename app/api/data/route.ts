@@ -20,14 +20,14 @@ export interface ApiDataResponse {
 }
 
 export async function GET() {
-  const latest = getAllLatest();
+  const latest = await getAllLatest();
 
   const metrics: Record<string, MetricData> = {};
 
   for (const metricId of METRIC_IDS) {
     const config = METRIC_CONFIG[metricId];
     const current = latest[metricId];
-    const history = getHistory(metricId, 52);
+    const history = await getHistory(metricId, 52);
 
     metrics[metricId] = {
       current: current?.current ?? null,

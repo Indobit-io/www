@@ -52,7 +52,7 @@ export async function GET() {
   // Insert each result into the database
   for (const result of allResults) {
     try {
-      insertSnapshot(result.metricId, result.value, result.source);
+      await insertSnapshot(result.metricId, result.value, result.source);
       log.push(`OK ${result.source} → ${result.metricId} = ${result.value}`);
       successCount++;
     } catch (err) {
