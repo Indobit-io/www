@@ -203,7 +203,7 @@ export default async function DashboardPage() {
               SOURCES: FRED · COINGECKO · YAHOO FINANCE · DEFILLAMA
             </div>
             <div>
-              DATA REFRESHED EVERY 6H VIA CRON → /api/fetch-data
+              DATA REFRESHED DAILY VIA CRON → /api/fetch-data
             </div>
           </div>
         </footer>

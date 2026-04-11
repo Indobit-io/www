@@ -9,7 +9,7 @@
 - Next.js 14 App Router + TypeScript
 - SQLite via better-sqlite3 for data storage
 - Data fetched from FRED, Yahoo Finance, CoinGecko, DeFiLlama APIs
-- Cron job hits /api/fetch-data every 6 hours
+- Cron job hits /api/fetch-data once daily at midnight UTC
 
 ## Key Decisions
 - SQLite over Postgres: simpler, no external DB needed, good enough for time-series snapshots
@@ -67,4 +67,4 @@ data/
 - Set `FRED_API_KEY` env var
 - SQLite uses `/tmp/liquidity.db` in production (ephemeral — data resets on cold starts)
 - For persistence on Vercel: migrate to Turso (SQLite edge) or Vercel Postgres
-- Cron configured in `vercel.json` — fires every 6 hours
+- Cron configured in `vercel.json` — fires daily at midnight UTC (free plan limit)
