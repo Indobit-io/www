@@ -8,7 +8,7 @@ async function getData(): Promise<ApiDataResponse | null> {
     // In production use absolute URL; in dev use relative
     const baseUrl =
       process.env.NODE_ENV === "production"
-        ? "https://www-livid-pi.vercel.app"
+        ? "https://indobit.io"
         : "http://localhost:3000";
 
     const res = await fetch(`${baseUrl}/api/data`, {
