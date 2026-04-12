@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { generateSignals } from "@/lib/signals";
+import { SIGNAL_TAG_TO_SLUG } from "@/lib/knowledge";
 import type { MetricId } from "@/lib/config";
 
 interface SignalsPanelProps {
@@ -43,6 +45,9 @@ export function SignalsPanel({ values }: SignalsPanelProps) {
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
       {signals.map((signal) => {
         const style = LEVEL_STYLES[signal.level];
+        const kbSlug = SIGNAL_TAG_TO_SLUG[signal.tag];
+        const kbHref = kbSlug ? `/kb#${kbSlug}` : "/kb";
+
         return (
           <div
             key={signal.id}
@@ -51,12 +56,21 @@ export function SignalsPanel({ values }: SignalsPanelProps) {
             <div
               className={`mt-1 h-1.5 w-1.5 rounded-full flex-shrink-0 ${style.dot}`}
             />
-            <div className="min-w-0">
-              <span
-                className={`font-mono text-[10px] font-bold tracking-widest ${style.tag}`}
-              >
-                {signal.tag}
-              </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <span
+                  className={`font-mono text-[10px] font-bold tracking-widest ${style.tag}`}
+                >
+                  {signal.tag}
+                </span>
+                <Link
+                  href={kbHref}
+                  className="text-[9px] font-mono text-terminal-text-muted hover:text-terminal-green transition-colors flex-shrink-0"
+                  title="Learn more in Knowledge Base"
+                >
+                  KB →
+                </Link>
+              </div>
               <p className={`text-xs mt-0.5 leading-snug ${style.text}`}>
                 {signal.message}
               </p>
