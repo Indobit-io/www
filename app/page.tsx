@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { MetricCard } from "@/components/MetricCard";
 import { SignalsPanel } from "@/components/SignalsPanel";
 import { METRIC_CONFIG, CATEGORY_ORDER, METRIC_IDS, type MetricId } from "@/lib/config";
@@ -120,13 +121,21 @@ export default async function DashboardPage() {
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <div
-              className={`h-2 w-2 rounded-full ${STATUS_DOT_CLASSES[statusDot]}`}
-            />
-            <div className="text-[10px] font-mono text-terminal-text-muted text-right">
-              <div>LAST UPDATE</div>
-              <div className="text-terminal-text-dim">{lastUpdate}</div>
+          <div className="flex items-center gap-4 flex-shrink-0">
+            <Link
+              href="/kb"
+              className="font-mono text-[10px] text-terminal-text-muted hover:text-terminal-green tracking-widest transition-colors"
+            >
+              KB
+            </Link>
+            <div className="flex items-center gap-2">
+              <div
+                className={`h-2 w-2 rounded-full ${STATUS_DOT_CLASSES[statusDot]}`}
+              />
+              <div className="text-[10px] font-mono text-terminal-text-muted text-right">
+                <div>LAST UPDATE</div>
+                <div className="text-terminal-text-dim">{lastUpdate}</div>
+              </div>
             </div>
           </div>
         </div>
