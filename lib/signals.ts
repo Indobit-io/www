@@ -203,5 +203,59 @@ export function generateSignals(values: MetricValues): Signal[] {
     }
   }
 
+  // Yield curve (2Y10Y spread in basis points)
+  const yieldCurve = v("yield_curve");
+  if (yieldCurve !== null) {
+    if (yieldCurve < -50) {
+      signals.push({
+        id: "curve-inverted",
+        level: "warn",
+        tag: "INVERTED",
+        message: `Yield curve at ${yieldCurve}bps — inverted, historical recession precursor`,
+      });
+    } else if (yieldCurve < 0) {
+      signals.push({
+        id: "curve-flat",
+        level: "info",
+        tag: "CURVE FLAT",
+        message: `Yield curve at ${yieldCurve}bps — near flat, watch for inversion`,
+      });
+    } else if (yieldCurve > 100) {
+      signals.push({
+        id: "curve-steep",
+        level: "info",
+        tag: "CURVE STEEP",
+        message: `Yield curve at ${yieldCurve}bps — steepening, growth/inflation expectations rising`,
+      });
+    }
+  }
+
+  // CPI (YoY % change)
+  const cpi = v("cpi");
+  if (cpi !== null) {
+    if (cpi > 5) {
+      signals.push({
+        id: "cpi-hot",
+        level: "alert",
+        tag: "INFLATION HOT",
+        message: `CPI at ${cpi.toFixed(1)}% YoY — well above Fed target, keeps policy tight`,
+      });
+    } else if (cpi > 3) {
+      signals.push({
+        id: "cpi-elevated",
+        level: "warn",
+        tag: "CPI ELEVATED",
+        message: `CPI at ${cpi.toFixed(1)}% YoY — above 2% target, limits Fed's room to cut`,
+      });
+    } else if (cpi < 2) {
+      signals.push({
+        id: "cpi-low",
+        level: "info",
+        tag: "CPI AT TARGET",
+        message: `CPI at ${cpi.toFixed(1)}% YoY — near or below Fed's 2% target, rate cuts possible`,
+      });
+    }
+  }
+
   return signals;
 }

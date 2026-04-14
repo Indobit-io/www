@@ -8,6 +8,9 @@ export type MetricId =
   | "dxy"
   | "gold"
   | "yield_10y"
+  | "yield_2y"
+  | "yield_curve"
+  | "cpi"
   | "oil"
   | "btc"
   | "stablecoins";
@@ -20,6 +23,7 @@ export interface MetricConfig {
   category: string;
   desc: string;
   decimals?: number;
+  derived?: boolean; // computed from other metrics, not fetched directly
 }
 
 export const METRIC_CONFIG: Record<MetricId, MetricConfig> = {
@@ -58,6 +62,15 @@ export const METRIC_CONFIG: Record<MetricId, MetricConfig> = {
     category: "Cash Positioning",
     desc: "Total MMF assets. Record highs = massive dry powder on sidelines.",
     decimals: 2,
+  },
+  cpi: {
+    label: "CPI (YoY)",
+    unit: "%",
+    low: 0,
+    high: 10,
+    category: "Inflation",
+    desc: "US Consumer Price Index, year-over-year % change. Fed target is 2%.",
+    decimals: 1,
   },
   sp500: {
     label: "S&P 500",
@@ -100,9 +113,28 @@ export const METRIC_CONFIG: Record<MetricId, MetricConfig> = {
     unit: "%",
     low: 1,
     high: 6,
-    category: "Safe Havens",
+    category: "Yield Curve",
     desc: "Benchmark rate. Rising = tighter conditions, falling = rate cut expectations.",
     decimals: 2,
+  },
+  yield_2y: {
+    label: "2Y Treasury Yield",
+    unit: "%",
+    low: 0,
+    high: 6,
+    category: "Yield Curve",
+    desc: "Short-end rate, closely tracks Fed policy expectations.",
+    decimals: 2,
+  },
+  yield_curve: {
+    label: "2Y10Y Spread",
+    unit: "bps",
+    low: -200,
+    high: 300,
+    category: "Yield Curve",
+    desc: "10Y minus 2Y yield in basis points. Negative = inverted curve, recession signal.",
+    decimals: 0,
+    derived: true,
   },
   oil: {
     label: "Brent Crude",
@@ -135,10 +167,12 @@ export const METRIC_CONFIG: Record<MetricId, MetricConfig> = {
 
 export const CATEGORY_ORDER = [
   "Monetary Policy",
+  "Inflation",
   "Cash Positioning",
   "Risk Appetite",
   "Dollar",
   "Safe Havens",
+  "Yield Curve",
   "Energy",
   "Crypto Liquidity",
 ];
