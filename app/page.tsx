@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { MetricCard } from "@/components/MetricCard";
 import { SignalsPanel } from "@/components/SignalsPanel";
 import { RiskRegimeCard } from "@/components/RiskRegimeCard";
@@ -9,10 +10,9 @@ async function getData(): Promise<ApiDataResponse | null> {
   try {
     // In production use absolute URL; in dev use relative
     const baseUrl =
-      process.env.NEXT_PUBLIC_BASE_URL ??
-      (process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : "http://localhost:3000");
+      process.env.NODE_ENV === "production"
+        ? "https://www.indobit.io"
+        : "http://localhost:3000";
 
     const res = await fetch(`${baseUrl}/api/data`, {
       next: { revalidate: 60 }, // Cache for 60s, ISR
@@ -124,13 +124,21 @@ export default async function DashboardPage() {
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <div
-              className={`h-2 w-2 rounded-full ${STATUS_DOT_CLASSES[statusDot]}`}
-            />
-            <div className="text-[10px] font-mono text-terminal-text-muted text-right">
-              <div>LAST UPDATE</div>
-              <div className="text-terminal-text-dim">{lastUpdate}</div>
+          <div className="flex items-center gap-4 flex-shrink-0">
+            <Link
+              href="/kb"
+              className="font-mono text-[10px] text-terminal-text-muted hover:text-terminal-green tracking-widest transition-colors"
+            >
+              KB
+            </Link>
+            <div className="flex items-center gap-2">
+              <div
+                className={`h-2 w-2 rounded-full ${STATUS_DOT_CLASSES[statusDot]}`}
+              />
+              <div className="text-[10px] font-mono text-terminal-text-muted text-right">
+                <div>LAST UPDATE</div>
+                <div className="text-terminal-text-dim">{lastUpdate}</div>
+              </div>
             </div>
           </div>
         </div>
