@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { MetricCard } from "@/components/MetricCard";
 import { SignalsPanel } from "@/components/SignalsPanel";
+import { RiskRegimeCard } from "@/components/RiskRegimeCard";
 import { METRIC_CONFIG, CATEGORY_ORDER, METRIC_IDS, type MetricId } from "@/lib/config";
+import { computeRegime } from "@/lib/regime";
 import type { ApiDataResponse } from "./api/data/route";
 
 async function getData(): Promise<ApiDataResponse | null> {
@@ -102,6 +104,8 @@ export default async function DashboardPage() {
     byCategory[cat].push(id);
   }
 
+  const regime = computeRegime(values);
+
   return (
     <main className="min-h-screen bg-terminal-bg text-terminal-text">
       {/* Header */}
@@ -141,6 +145,11 @@ export default async function DashboardPage() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-8">
+        {/* Risk Regime */}
+        <section>
+          <RiskRegimeCard regime={regime} />
+        </section>
+
         {/* Signals Panel */}
         <section>
           <div className="flex items-center gap-3 mb-3">
@@ -150,7 +159,7 @@ export default async function DashboardPage() {
             </span>
             <div className="h-px flex-1 bg-terminal-border" />
           </div>
-          <SignalsPanel values={values} />
+          <SignalsPanel values={values} signalEvents={data.signal_events} />
         </section>
 
         {/* Metrics Grid — grouped by category */}

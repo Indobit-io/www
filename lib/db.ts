@@ -20,6 +20,16 @@ async function init() {
     );
     CREATE INDEX IF NOT EXISTS idx_snapshots_metric
       ON snapshots(metric_id, timestamp DESC);
+
+    CREATE TABLE IF NOT EXISTS signal_events (
+      id SERIAL PRIMARY KEY,
+      signal_id TEXT NOT NULL UNIQUE,
+      tag TEXT NOT NULL,
+      level TEXT NOT NULL,
+      message TEXT,
+      first_seen TIMESTAMP NOT NULL DEFAULT NOW(),
+      last_seen TIMESTAMP NOT NULL DEFAULT NOW()
+    );
   `);
 
     _initialized = true;
@@ -31,6 +41,16 @@ export interface Snapshot {
     metric_id: string;
     value: number;
     source: string | null;
+}
+
+export interface SignalEvent {
+  id: number;
+  signal_id: string;
+  tag: string;
+  level: string;
+  message: string | null;
+  first_seen: string;
+  last_seen: string;
 }
 
 export async function insertSnapshot(
@@ -93,4 +113,53 @@ export async function getAllLatest(): Promise<
     }
 
     return out;
+}
+
+export async function upsertSignalEvents(
+  signals: Array<{ signal_id: string; tag: string; level: string; message: string }>
+): Promise<void> {
+  if (signals.length === 0) return;
+  await init();
+  for (const s of signals) {
+    await pool.query(
+      `INSERT INTO signal_events (signal_id, tag, level, message, first_seen, last_seen)
+       VALUES ($1, $2, $3, $4, NOW(), NOW())
+       ON CONFLICT (signal_id) DO UPDATE SET
+         last_seen = NOW(),
+         tag = EXCLUDED.tag,
+         level = EXCLUDED.level,
+         message = EXCLUDED.message`,
+      [s.signal_id, s.tag, s.level, s.message]
+    );
+  }
+}
+
+export async function clearInactiveSignals(activeIds: string[]): Promise<void> {
+  await init();
+  if (activeIds.length === 0) {
+    await pool.query("DELETE FROM signal_events");
+    return;
+  }
+  // Delete signals not in the active list
+  const placeholders = activeIds.map((_, i) => `$${i + 1}`).join(", ");
+  await pool.query(
+    `DELETE FROM signal_events WHERE signal_id NOT IN (${placeholders})`,
+    activeIds
+  );
+}
+
+export async function getSignalEvents(): Promise<SignalEvent[]> {
+  await init();
+  const result = await pool.query(
+    "SELECT * FROM signal_events ORDER BY first_seen ASC"
+  );
+  return result.rows.map((r) => ({
+    id: r.id as number,
+    signal_id: r.signal_id as string,
+    tag: r.tag as string,
+    level: r.level as string,
+    message: r.message as string | null,
+    first_seen: r.first_seen instanceof Date ? r.first_seen.toISOString() : r.first_seen as string,
+    last_seen: r.last_seen instanceof Date ? r.last_seen.toISOString() : r.last_seen as string,
+  }));
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { getAllLatest, getHistory } from "@/lib/db";
+import { getAllLatest, getHistory, getSignalEvents } from "@/lib/db";
 import { METRIC_CONFIG, METRIC_IDS } from "@/lib/config";
+import type { SignalEvent } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -16,11 +17,15 @@ export interface MetricData {
 
 export interface ApiDataResponse {
   metrics: Record<string, MetricData>;
+  signal_events: SignalEvent[];
   fetched_at: string;
 }
 
 export async function GET() {
-  const latest = await getAllLatest();
+  const [latest, signalEvents] = await Promise.all([
+    getAllLatest(),
+    getSignalEvents(),
+  ]);
 
   const metrics: Record<string, MetricData> = {};
 
@@ -45,6 +50,7 @@ export async function GET() {
 
   return NextResponse.json({
     metrics,
+    signal_events: signalEvents,
     fetched_at: new Date().toISOString(),
   } satisfies ApiDataResponse);
 }

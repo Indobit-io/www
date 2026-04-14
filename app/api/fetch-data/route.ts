@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
-import { insertSnapshot } from "@/lib/db";
+import { insertSnapshot, upsertSignalEvents, clearInactiveSignals } from "@/lib/db";
 import { fetchAllFRED } from "@/lib/fetchers/fred";
 import { fetchAllYahoo } from "@/lib/fetchers/yahoo";
 import { fetchAllCoinGecko } from "@/lib/fetchers/coingecko";
+import { generateSignals } from "@/lib/signals";
+import type { MetricId } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -35,7 +37,6 @@ export async function GET() {
     ...(coinGeckoResults.status === "fulfilled" ? coinGeckoResults.value : []),
   ];
 
-  // Log top-level failures
   if (fredResults.status === "rejected") {
     log.push(`FRED batch failed: ${fredResults.reason?.message}`);
     failCount++;
@@ -49,11 +50,30 @@ export async function GET() {
     failCount++;
   }
 
+  // Build a quick lookup for derived metrics
+  const fetched: Record<string, number> = {};
+  for (const r of allResults) {
+    fetched[r.metricId] = r.value;
+  }
+
+  // Derived: yield_curve = (10Y - 2Y) * 100 in basis points
+  if (fetched["yield_10y"] != null && fetched["yield_2y"] != null) {
+    const spread = Math.round((fetched["yield_10y"] - fetched["yield_2y"]) * 100);
+    allResults.push({
+      metricId: "yield_curve",
+      value: spread,
+      source: "derived/DGS10-DGS2",
+    });
+    log.push(`OK derived → yield_curve = ${spread}bps`);
+  }
+
   // Insert each result into the database
   for (const result of allResults) {
     try {
       await insertSnapshot(result.metricId, result.value, result.source);
-      log.push(`OK ${result.source} → ${result.metricId} = ${result.value}`);
+      if (!result.source.startsWith("derived/")) {
+        log.push(`OK ${result.source} → ${result.metricId} = ${result.value}`);
+      }
       successCount++;
     } catch (err) {
       log.push(
@@ -61,6 +81,27 @@ export async function GET() {
       );
       failCount++;
     }
+  }
+
+  // Track signal history using the freshly-fetched values
+  try {
+    const values = Object.fromEntries(
+      allResults.map((r) => [r.metricId, r.value])
+    ) as Partial<Record<MetricId, number>>;
+
+    const activeSignals = generateSignals(values);
+    await upsertSignalEvents(
+      activeSignals.map((s) => ({
+        signal_id: s.id,
+        tag: s.tag,
+        level: s.level,
+        message: s.message,
+      }))
+    );
+    await clearInactiveSignals(activeSignals.map((s) => s.id));
+    log.push(`Signal history updated: ${activeSignals.length} active`);
+  } catch (err) {
+    log.push(`Signal history error: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   const elapsed = Date.now() - startTime;

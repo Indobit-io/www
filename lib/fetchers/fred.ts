@@ -8,7 +8,11 @@ const FRED_BASE = "https://api.stlouisfed.org/fred/series/observations";
 
 const SERIES_MAP: Record<
   string,
-  { metricId: string; transform?: (v: number) => number }
+  {
+    metricId: string;
+    transform?: (v: number) => number;
+    units?: string; // passed to FRED API (e.g. "pc1" for YoY % change)
+  }
 > = {
   WALCL: {
     metricId: "fed_bs",
@@ -17,11 +21,17 @@ const SERIES_MAP: Record<
   },
   FEDFUNDS: { metricId: "fed_rate" },
   DGS10: { metricId: "yield_10y" },
+  DGS2: { metricId: "yield_2y" },
   RRPONTSYD: { metricId: "rrp" },
   MMMFFAQ027S: {
     metricId: "mmf",
     // Quarterly, in billions — divide by 1000 to get trillions
     transform: (v) => v / 1000,
+  },
+  // CPI year-over-year % change via FRED's built-in pc1 units transform
+  CPIAUCSL: {
+    metricId: "cpi",
+    units: "pc1",
   },
 };
 
@@ -29,7 +39,9 @@ async function fetchSeries(
   seriesId: string,
   apiKey: string
 ): Promise<FetchResult> {
-  const url = `${FRED_BASE}?series_id=${seriesId}&api_key=${apiKey}&file_type=json&sort_order=desc&limit=1&observation_start=2020-01-01`;
+  const config = SERIES_MAP[seriesId];
+  const unitsParam = config.units ? `&units=${config.units}` : "";
+  const url = `${FRED_BASE}?series_id=${seriesId}&api_key=${apiKey}&file_type=json&sort_order=desc&limit=1&observation_start=2020-01-01${unitsParam}`;
 
   const res = await fetch(url, {
     headers: { Accept: "application/json" },
@@ -55,7 +67,6 @@ async function fetchSeries(
     throw new Error(`FRED ${seriesId}: value "${obs.value}" is not a number`);
   }
 
-  const config = SERIES_MAP[seriesId];
   const value = config.transform ? config.transform(raw) : raw;
 
   return {
