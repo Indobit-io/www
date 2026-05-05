@@ -1,10 +1,18 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Liquidity Flow Tracker",
+  title: "Global Liquidity Flow",
   description:
-    "Real-time dashboard tracking global liquidity — Fed balance sheet, rates, risk appetite, and crypto flows.",
+    "Interactive visualization of global money movement — Fed policy, QE/QT, rates, and their real-time impact on markets.",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: "#0a0f0a",
 };
 
 export default function RootLayout({
