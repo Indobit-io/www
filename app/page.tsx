@@ -1,229 +1,98 @@
 import Link from "next/link";
-import { MetricCard } from "@/components/MetricCard";
-import { SignalsPanel } from "@/components/SignalsPanel";
-import { RiskRegimeCard } from "@/components/RiskRegimeCard";
-import { METRIC_CONFIG, CATEGORY_ORDER, METRIC_IDS, type MetricId } from "@/lib/config";
-import { computeRegime } from "@/lib/regime";
-import type { ApiDataResponse } from "./api/data/route";
+import { getLoans, getEntries } from "@/lib/db";
+import { buildSummary } from "@/lib/calc";
+import { LoanCard } from "@/components/LoanCard";
 
-async function getData(): Promise<ApiDataResponse | null> {
-  try {
-    // In production use absolute URL; in dev use relative
-    const baseUrl =
-      process.env.NODE_ENV === "production"
-        ? "https://www.indobit.io"
-        : "http://localhost:3000";
+export const dynamic = "force-dynamic";
 
-    const res = await fetch(`${baseUrl}/api/data`, {
-      next: { revalidate: 60 }, // Cache for 60s, ISR
-    });
-    if (!res.ok) return null;
-    return res.json();
-  } catch {
-    return null;
-  }
-}
+export default async function HomePage() {
+  const loans = await getLoans();
 
-function getStatusDot(
-  metrics: ApiDataResponse["metrics"]
-): "green" | "yellow" | "red" {
-  const now = Date.now();
-  const updates = Object.values(metrics)
-    .map((m) => m.updated)
-    .filter(Boolean) as string[];
-
-  if (updates.length === 0) return "red";
-
-  const latestMs = Math.max(...updates.map((u) => new Date(u).getTime()));
-  const ageHours = (now - latestMs) / 3_600_000;
-
-  if (ageHours < 24) return "green";
-  if (ageHours < 168) return "yellow";
-  return "red";
-}
-
-function formatLastUpdate(metrics: ApiDataResponse["metrics"]): string {
-  const updates = Object.values(metrics)
-    .map((m) => m.updated)
-    .filter(Boolean) as string[];
-
-  if (updates.length === 0) return "No data";
-
-  const latest = new Date(
-    Math.max(...updates.map((u) => new Date(u).getTime()))
+  const loansWithSummary = await Promise.all(
+    loans.map(async (loan) => {
+      const entries = await getEntries(loan.id);
+      const summary = buildSummary(loan, entries);
+      return { loan, summary };
+    })
   );
-  return latest.toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZoneName: "short",
-  });
-}
-
-const STATUS_DOT_CLASSES = {
-  green: "bg-terminal-green shadow-[0_0_6px_#00ff41]",
-  yellow: "bg-terminal-amber",
-  red: "bg-terminal-red animate-pulse",
-};
-
-export default async function DashboardPage() {
-  const data = await getData();
-
-  if (!data) {
-    return (
-      <main className="min-h-screen bg-terminal-bg flex flex-col items-center justify-center">
-        <div className="text-terminal-text-dim font-mono text-sm">
-          No data yet. Run{" "}
-          <code className="text-terminal-green">/api/fetch-data</code> to seed
-          the database.
-        </div>
-      </main>
-    );
-  }
-
-  const { metrics } = data;
-  const statusDot = getStatusDot(metrics);
-  const lastUpdate = formatLastUpdate(metrics);
-
-  // Build values map for signals
-  const values: Partial<Record<MetricId, number>> = {};
-  for (const id of METRIC_IDS) {
-    const m = metrics[id];
-    if (m?.current !== null && m?.current !== undefined) {
-      values[id] = m.current;
-    }
-  }
-
-  // Group metrics by category
-  const byCategory: Record<string, MetricId[]> = {};
-  for (const id of METRIC_IDS) {
-    const cat = METRIC_CONFIG[id].category;
-    if (!byCategory[cat]) byCategory[cat] = [];
-    byCategory[cat].push(id);
-  }
-
-  const regime = computeRegime(values);
 
   return (
     <main className="min-h-screen bg-terminal-bg text-terminal-text">
-      {/* Header */}
-      <header className="border-b border-terminal-border bg-terminal-surface/50 sticky top-0 z-10 backdrop-blur-sm">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="text-terminal-green font-mono text-xs tracking-widest opacity-60">
-              ▌
-            </div>
+      <header className="sticky top-0 z-10 border-b border-terminal-border bg-terminal-bg/95 backdrop-blur-sm">
+        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <span className="text-terminal-green font-mono text-xs opacity-50">▌</span>
             <div>
-              <h1 className="font-mono text-sm font-bold text-terminal-green tracking-wider">
-                LIQUIDITY FLOW TRACKER
+              <h1 className="font-mono text-xs font-bold text-terminal-green tracking-wider">
+                CRYPTO LOAN TRACKER
               </h1>
-              <div className="text-[10px] text-terminal-text-muted font-mono">
-                global financial system — real data, no predictions
+              <div className="font-mono text-[9px] text-terminal-text-muted">
+                monitor kinerja pinjaman beli aset kripto
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-4 flex-shrink-0">
-            <Link
-              href="/kb"
-              className="font-mono text-[10px] text-terminal-text-muted hover:text-terminal-green tracking-widest transition-colors"
-            >
-              KB
-            </Link>
-            <div className="flex items-center gap-2">
-              <div
-                className={`h-2 w-2 rounded-full ${STATUS_DOT_CLASSES[statusDot]}`}
-              />
-              <div className="text-[10px] font-mono text-terminal-text-muted text-right">
-                <div>LAST UPDATE</div>
-                <div className="text-terminal-text-dim">{lastUpdate}</div>
-              </div>
-            </div>
-          </div>
+          <Link
+            href="/loans/new"
+            className="font-mono text-[10px] px-3 py-1.5 border border-terminal-green text-terminal-green hover:bg-terminal-green hover:text-terminal-bg rounded transition-colors"
+          >
+            + PINJAMAN
+          </Link>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 py-6 space-y-8">
-        {/* Risk Regime */}
-        <section>
-          <RiskRegimeCard regime={regime} />
-        </section>
-
-        {/* Signals Panel */}
-        <section>
-          <div className="flex items-center gap-3 mb-3">
-            <div className="h-px flex-1 bg-terminal-border" />
-            <span className="font-mono text-[10px] tracking-widest text-terminal-text-muted">
-              SIGNALS
-            </span>
-            <div className="h-px flex-1 bg-terminal-border" />
-          </div>
-          <SignalsPanel values={values} signalEvents={data.signal_events} />
-        </section>
-
-        {/* Metrics Grid — grouped by category */}
-        {CATEGORY_ORDER.filter((cat) => byCategory[cat]?.length).map((cat) => (
-          <section key={cat}>
-            <div className="flex items-center gap-3 mb-3">
-              <div className="h-px flex-1 bg-terminal-border" />
-              <span className="font-mono text-[10px] tracking-widest text-terminal-text-muted uppercase">
-                {cat}
-              </span>
-              <div className="h-px flex-1 bg-terminal-border" />
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-              {byCategory[cat].map((id) => {
-                const m = metrics[id];
-                return (
-                  <MetricCard
-                    key={id}
-                    metricId={id}
-                    current={m?.current ?? null}
-                    history={m?.history ?? []}
-                    updated={m?.updated ?? null}
-                  />
-                );
-              })}
-            </div>
-          </section>
-        ))}
-
-        {/* Big Picture Panel */}
-        <section>
-          <div className="flex items-center gap-3 mb-3">
-            <div className="h-px flex-1 bg-terminal-border" />
-            <span className="font-mono text-[10px] tracking-widest text-terminal-text-muted">
-              BIG PICTURE
-            </span>
-            <div className="h-px flex-1 bg-terminal-border" />
-          </div>
-          <div className="border border-terminal-border bg-terminal-surface rounded p-4">
-            <div className="font-mono text-xs text-terminal-text-muted mb-2 tracking-widest">
-              MANUAL ANALYSIS — EDIT /data/big-picture.md
-            </div>
-            <p className="text-sm text-terminal-text-dim leading-relaxed">
-              Update this section with your current macro thesis. Edit{" "}
-              <code className="text-terminal-green text-xs">
-                data/big-picture.md
-              </code>{" "}
-              or connect a CMS. This space is intentionally manual — the charts
-              speak for themselves, but interpretation requires judgment.
+      <div className="max-w-2xl mx-auto px-4 py-6">
+        {loans.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-24 space-y-4 text-center">
+            <div className="font-mono text-terminal-green text-4xl opacity-30">₿</div>
+            <div className="font-mono text-sm text-terminal-text-dim">Belum ada pinjaman</div>
+            <p className="font-mono text-[10px] text-terminal-text-muted max-w-xs leading-relaxed">
+              Tambahkan detail pinjaman Anda untuk mulai melacak kinerja portfolio XRP vs biaya bunga.
             </p>
+            <Link
+              href="/loans/new"
+              className="font-mono text-xs px-4 py-2 border border-terminal-green text-terminal-green hover:bg-terminal-green hover:text-terminal-bg rounded transition-colors"
+            >
+              + Tambah Pinjaman Pertama
+            </Link>
           </div>
-        </section>
+        ) : (
+          <div className="space-y-4">
+            {/* Aggregate summary if multiple loans */}
+            {loansWithSummary.length > 1 && (
+              <div className="border border-terminal-border bg-terminal-surface rounded-lg p-4 grid grid-cols-3 gap-3">
+                {[
+                  {
+                    label: "TOTAL PINJAMAN",
+                    value: `Rp ${loansWithSummary.reduce((s, { loan }) => s + loan.principal_idr, 0).toLocaleString("id-ID")}`,
+                    color: "text-terminal-text-dim",
+                  },
+                  {
+                    label: "TOTAL DIBAYAR",
+                    value: `Rp ${loansWithSummary.reduce((s, { summary }) => s + summary.totalPaidSoFar, 0).toLocaleString("id-ID")}`,
+                    color: "text-terminal-amber",
+                  },
+                  {
+                    label: "TOTAL NILAI",
+                    value: `Rp ${loansWithSummary.reduce((s, { summary }) => s + (summary.currentPortfolioValue ?? 0), 0).toLocaleString("id-ID")}`,
+                    color: "text-terminal-green",
+                  },
+                ].map(({ label, value, color }) => (
+                  <div key={label}>
+                    <div className="font-mono text-[9px] tracking-widest text-terminal-text-muted mb-1">{label}</div>
+                    <div className={`font-mono text-xs font-bold ${color}`}>{value}</div>
+                  </div>
+                ))}
+              </div>
+            )}
 
-        {/* Footer */}
-        <footer className="border-t border-terminal-border pt-4 pb-8">
-          <div className="flex flex-col sm:flex-row justify-between gap-2 text-[10px] font-mono text-terminal-text-muted">
-            <div>
-              SOURCES: FRED · COINGECKO · YAHOO FINANCE · DEFILLAMA
-            </div>
-            <div>
-              DATA REFRESHED DAILY VIA CRON → /api/fetch-data
+            {/* Loan cards */}
+            <div className="space-y-3">
+              {loansWithSummary.map(({ loan, summary }) => (
+                <LoanCard key={loan.id} loan={loan} summary={summary} />
+              ))}
             </div>
           </div>
-        </footer>
+        )}
       </div>
     </main>
   );

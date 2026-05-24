@@ -64,3 +64,27 @@ body {
 .cursor-blink {
   animation: blink 1s step-end infinite;
 }
+
+/* Form inputs — terminal style */
+.input-field {
+  width: 100%;
+  background: #0a0f0a;
+  border: 1px solid #1a3a1a;
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: #c8ffc8;
+  outline: none;
+  transition: border-color 0.15s ease;
+  -webkit-appearance: none;
+}
+.input-field::placeholder { color: #3d6b3d; }
+.input-field:focus {
+  border-color: #00ff41;
+  box-shadow: 0 0 0 1px #00ff4120;
+}
+.input-field::-webkit-calendar-picker-indicator {
+  filter: invert(0.5) sepia(1) saturate(3) hue-rotate(85deg);
+  cursor: pointer;
+}
