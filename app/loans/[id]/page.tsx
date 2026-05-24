@@ -38,13 +38,11 @@ export default async function LoanDetailPage({
 
   // Recompute P&L with live price
   const liveNetPnl =
-    livePortfolioValue != null ? livePortfolioValue - summary.totalPaidSoFar : null;
+    livePortfolioValue != null ? livePortfolioValue - summary.totalRepayment : null;
   const liveNetPosition =
     livePortfolioValue != null ? livePortfolioValue - summary.remainingPrincipal : null;
   const liveRoi =
-    liveNetPnl != null && summary.totalPaidSoFar > 0
-      ? (liveNetPnl / summary.totalPaidSoFar) * 100
-      : null;
+    liveNetPnl != null ? (liveNetPnl / summary.totalRepayment) * 100 : null;
 
   const nextMonth =
     summary.monthsElapsed < loan.term_months ? summary.monthsElapsed + 1 : null;

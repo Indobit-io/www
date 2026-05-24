@@ -4,40 +4,39 @@ import type { Loan, MonthlyEntry } from "./db";
 
 export interface LoanScheduleRow {
   monthNumber: number;
-  monthLabel: string;       // "Apr 2025"
-  capitalPayment: number;   // fixed capital installment (IDR)
-  interestPayment: number;  // fixed 2% × principal (IDR)
+  monthLabel: string;
+  capitalPayment: number;
+  interestPayment: number;
   totalPayment: number;
-  cumulativePaid: number;   // sum of all payments up to this month
+  cumulativePaid: number;
   remainingPrincipal: number;
-  // Filled when an entry exists:
   xrpPriceIdr: number | null;
   xrpQtyHeld: number | null;
   portfolioValueIdr: number | null;
   netPosition: number | null;   // portfolioValue - remainingPrincipal
-  netPnl: number | null;        // portfolioValue - cumulativePaid
-  monthlyReturn: number | null; // % change in portfolio vs prior month
+  netPnl: number | null;        // portfolioValue - totalRepayment (full loan cost)
+  monthlyReturn: number | null;
   entryId: number | null;
   entryDate: string | null;
   notes: string | null;
 }
 
 export interface LoanSummary {
-  totalInterestCost: number;        // monthly_interest × term_months
-  totalRepayment: number;           // principal + totalInterestCost
+  totalInterestCost: number;
+  totalRepayment: number;           // principal + totalInterestCost (full cost of loan)
   monthlyCapital: number;
   monthlyInterest: number;
   monthlyPayment: number;
-  monthsElapsed: number;            // how many entries logged
+  monthsElapsed: number;
   monthsRemaining: number;
   currentPortfolioValue: number | null;
   currentXrpPrice: number | null;
   netPosition: number | null;       // portfolioValue - remainingPrincipal
-  netPnl: number | null;            // portfolioValue - cumulativePaid
-  breakEvenPriceIdr: number | null; // price to cover all future costs
+  netPnl: number | null;            // portfolioValue - totalRepayment
+  breakEvenPriceIdr: number | null;
   totalPaidSoFar: number;
   remainingPrincipal: number;
-  roi: number | null;               // netPnl / totalPaidSoFar × 100
+  roi: number | null;               // netPnl / totalRepayment × 100
 }
 
 function monthLabel(startDate: string, monthIndex: number): string {
@@ -50,6 +49,7 @@ export function buildSchedule(loan: Loan, entries: MonthlyEntry[]): LoanSchedule
   const monthlyCapital = Math.round(loan.principal_idr / loan.term_months);
   const monthlyInterest = Math.round(loan.principal_idr * Number(loan.monthly_interest_rate));
   const totalPayment = monthlyCapital + monthlyInterest;
+  const totalRepayment = loan.principal_idr + monthlyInterest * loan.term_months;
 
   const entryMap = new Map(entries.map((e) => [e.month_number, e]));
   const rows: LoanScheduleRow[] = [];
@@ -68,7 +68,7 @@ export function buildSchedule(loan: Loan, entries: MonthlyEntry[]): LoanSchedule
     if (entry) {
       portfolioValueIdr = Number(entry.xrp_price_idr) * Number(entry.xrp_qty_held);
       netPosition = portfolioValueIdr - remainingPrincipal;
-      netPnl = portfolioValueIdr - cumulativePaid;
+      netPnl = portfolioValueIdr - totalRepayment;
 
       if (prevEntry) {
         const prevValue = Number(prevEntry.xrp_price_idr) * Number(prevEntry.xrp_qty_held);
@@ -125,7 +125,7 @@ export function buildSummary(loan: Loan, entries: MonthlyEntry[]): LoanSummary {
   const netPosition =
     currentPortfolioValue != null ? currentPortfolioValue - remainingPrincipal : null;
   const netPnl =
-    currentPortfolioValue != null ? currentPortfolioValue - totalPaidSoFar : null;
+    currentPortfolioValue != null ? currentPortfolioValue - totalRepayment : null;
 
   // Break-even = price to cover remaining principal + remaining interest
   const remainingInterest = monthlyInterest * monthsRemaining;
@@ -135,7 +135,7 @@ export function buildSummary(loan: Loan, entries: MonthlyEntry[]): LoanSummary {
       : null;
 
   const roi =
-    netPnl != null && totalPaidSoFar > 0 ? (netPnl / totalPaidSoFar) * 100 : null;
+    netPnl != null ? (netPnl / totalRepayment) * 100 : null;
 
   return {
     totalInterestCost,

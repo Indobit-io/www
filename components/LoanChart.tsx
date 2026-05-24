@@ -12,9 +12,9 @@ interface Props {
 }
 
 function fmt(v: number) {
-  if (Math.abs(v) >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1)}M`;
-  if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toFixed(0)}jt`;
-  return `${(v / 1_000).toFixed(0)}k`;
+  if (Math.abs(v) >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(2)}M`;
+  if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}jt`;
+  return `${(v / 1_000).toFixed(2)}k`;
 }
 
 function TooltipContent({ active, payload, label }: {
