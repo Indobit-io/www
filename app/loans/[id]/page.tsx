@@ -203,9 +203,9 @@ export default async function LoanDetailPage({
             Biaya Total Pinjaman
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Metric label="Pokok Pinjaman" value={idr(loan.principal_idr, true)} color="text-cmc-text-secondary" />
-            <Metric label="Total Bunga (2%×pokok×bulan)" value={idr(summary.totalInterestCost, true)} color="text-cmc-red" />
-            <Metric label="Total Pengembalian" value={idr(summary.totalRepayment, true)} color="text-cmc-yellow" />
+            <Metric label="Pokok Pinjaman" value={idr(loan.principal_idr)} color="text-cmc-text-secondary" />
+            <Metric label="Total Bunga (2%×pokok×bulan)" value={idr(summary.totalInterestCost)} color="text-cmc-red" />
+            <Metric label="Total Pengembalian" value={idr(summary.totalRepayment)} color="text-cmc-yellow" />
             <Metric label="Harga Beli XRP" value={idr(loan.xrp_buy_price_idr)} color="text-cmc-text-secondary" />
           </div>
         </div>
