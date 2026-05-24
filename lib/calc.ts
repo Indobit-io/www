@@ -46,17 +46,18 @@ function monthLabel(startDate: string, monthIndex: number): string {
 }
 
 export function buildSchedule(loan: Loan, entries: MonthlyEntry[]): LoanScheduleRow[] {
-  const monthlyCapital = Math.round(loan.principal_idr / loan.term_months);
-  const monthlyInterest = Math.round(loan.principal_idr * Number(loan.monthly_interest_rate));
+  const principal = Number(loan.principal_idr);
+  const monthlyCapital = Math.round(principal / loan.term_months);
+  const monthlyInterest = Math.round(principal * Number(loan.monthly_interest_rate));
   const totalPayment = monthlyCapital + monthlyInterest;
-  const totalRepayment = loan.principal_idr + monthlyInterest * loan.term_months;
+  const totalRepayment = principal + monthlyInterest * loan.term_months;
 
   const entryMap = new Map(entries.map((e) => [e.month_number, e]));
   const rows: LoanScheduleRow[] = [];
 
   for (let m = 1; m <= loan.term_months; m++) {
     const cumulativePaid = totalPayment * m;
-    const remainingPrincipal = loan.principal_idr - monthlyCapital * m;
+    const remainingPrincipal = principal - monthlyCapital * m;
     const entry = entryMap.get(m) ?? null;
     const prevEntry = entryMap.get(m - 1) ?? null;
 
@@ -102,16 +103,17 @@ export function buildSchedule(loan: Loan, entries: MonthlyEntry[]): LoanSchedule
 }
 
 export function buildSummary(loan: Loan, entries: MonthlyEntry[]): LoanSummary {
-  const monthlyCapital = Math.round(loan.principal_idr / loan.term_months);
-  const monthlyInterest = Math.round(loan.principal_idr * Number(loan.monthly_interest_rate));
+  const principal = Number(loan.principal_idr);
+  const monthlyCapital = Math.round(principal / loan.term_months);
+  const monthlyInterest = Math.round(principal * Number(loan.monthly_interest_rate));
   const monthlyPayment = monthlyCapital + monthlyInterest;
   const totalInterestCost = monthlyInterest * loan.term_months;
-  const totalRepayment = Number(loan.principal_idr) + totalInterestCost;
+  const totalRepayment = principal + totalInterestCost;
 
   const monthsElapsed = entries.length;
   const monthsRemaining = loan.term_months - monthsElapsed;
   const totalPaidSoFar = monthlyPayment * monthsElapsed;
-  const remainingPrincipal = Math.max(0, loan.principal_idr - monthlyCapital * monthsElapsed);
+  const remainingPrincipal = Math.max(0, principal - monthlyCapital * monthsElapsed);
 
   const latest = entries.length > 0 ? entries[entries.length - 1] : null;
   const currentXrpPrice = latest ? Number(latest.xrp_price_idr) : null;
