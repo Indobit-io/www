@@ -30,7 +30,7 @@ export function LiveStatus({ xrpQty, remainingPrincipal, realizedPnl, roi, total
 
   useEffect(() => {
     function poll() {
-      fetch("/api/xrp-price")
+      fetch("/api/xrp-price", { cache: "no-store" })
         .then((r) => r.json())
         .then((data) => {
           if (data.idr) {
@@ -41,6 +41,7 @@ export function LiveStatus({ xrpQty, remainingPrincipal, realizedPnl, roi, total
         .catch(() => {});
     }
 
+    poll(); // fetch immediately on mount
     const id = setInterval(poll, 2000);
     return () => clearInterval(id);
   }, []);
