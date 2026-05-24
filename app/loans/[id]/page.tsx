@@ -5,7 +5,8 @@ import { buildSchedule, buildSummary } from "@/lib/calc";
 import { fetchXrpPrice } from "@/lib/coingecko";
 import { LoanChart } from "@/components/LoanChart";
 import { MonthlyTable } from "@/components/MonthlyTable";
-import { idr, xrp, pct, date, pnlColor } from "@/lib/fmt";
+import { LiveStatus } from "@/components/LiveStatus";
+import { idr, pct, date, pnlColor } from "@/lib/fmt";
 
 export const dynamic = "force-dynamic";
 
@@ -26,18 +27,12 @@ export default async function LoanDetailPage({
   const schedule = buildSchedule(loan, entries);
   const summary = buildSummary(loan, entries);
 
-  // Use live price when no entries exist yet, or always for the "current" row
   const currentXrpPrice = livePrice?.idr ?? summary.currentXrpPrice;
 
-  // Live portfolio value uses live price × qty from latest entry (or initial qty)
   const xrpQty =
     entries.length > 0
-      ? Number(entries[entries.length - 1].xrp_qty_held)
-      : Number(loan.xrp_qty);
-  const livePortfolioValue = currentXrpPrice != null ? currentXrpPrice * xrpQty : null;
-
-  const liveNetPosition =
-    livePortfolioValue != null ? livePortfolioValue - summary.remainingPrincipal : null;
+      ? entries[entries.length - 1].xrp_qty_held
+      : loan.xrp_qty;
 
   const nextMonth =
     summary.monthsElapsed < loan.term_months ? summary.monthsElapsed + 1 : null;
@@ -94,20 +89,15 @@ export default async function LoanDetailPage({
           ))}
         </div>
 
-        {/* Key metrics */}
-        <div className="bg-cmc-surface border border-cmc-border rounded-2xl p-5">
-          <div className="text-xs font-semibold uppercase tracking-wide text-cmc-text-muted mb-4">
-            Status Terkini
-          </div>
-          <div className="grid grid-cols-2 gap-5">
-            <Metric label="Nilai Portfolio (live)" value={idr(livePortfolioValue)} color="text-cmc-green" large />
-            <Metric label="Realized P&L" value={idr(summary.realizedPnl, true)} color={pnlColor(summary.realizedPnl)} sub={pct(summary.roi)} large />
-            <Metric label="Sisa Hutang" value={idr(summary.remainingPrincipal, true)} color="text-cmc-red" />
-            <Metric label="Total Dibayar" value={idr(summary.totalPaidSoFar, true)} color="text-cmc-yellow" />
-            <Metric label="Posisi vs Hutang" value={idr(liveNetPosition, true)} color={pnlColor(liveNetPosition)} />
-            <Metric label="XRP Dipegang" value={xrp(xrpQty)} color="text-cmc-text-secondary" />
-          </div>
-        </div>
+        {/* Key metrics — live polling every 2s */}
+        <LiveStatus
+          xrpQty={xrpQty}
+          remainingPrincipal={summary.remainingPrincipal}
+          realizedPnl={summary.realizedPnl}
+          roi={summary.roi}
+          totalPaidSoFar={summary.totalPaidSoFar}
+          initialXrpPrice={currentXrpPrice}
+        />
 
         {/* Break-even */}
         <div
