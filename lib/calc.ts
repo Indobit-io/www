@@ -106,7 +106,7 @@ export function buildSummary(loan: Loan, entries: MonthlyEntry[]): LoanSummary {
   const monthlyInterest = Math.round(loan.principal_idr * Number(loan.monthly_interest_rate));
   const monthlyPayment = monthlyCapital + monthlyInterest;
   const totalInterestCost = monthlyInterest * loan.term_months;
-  const totalRepayment = loan.principal_idr + totalInterestCost;
+  const totalRepayment = Number(loan.principal_idr) + totalInterestCost;
 
   const monthsElapsed = entries.length;
   const monthsRemaining = loan.term_months - monthsElapsed;
