@@ -1,17 +1,31 @@
 import Link from "next/link";
 import { getLoans, getEntries } from "@/lib/db";
 import { buildSummary } from "@/lib/calc";
+import { fetchXrpPrice } from "@/lib/coingecko";
 import { LoanCard } from "@/components/LoanCard";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const loans = await getLoans();
+  const [loans, livePrice] = await Promise.all([
+    getLoans(),
+    fetchXrpPrice().catch(() => null),
+  ]);
 
   const loansWithSummary = await Promise.all(
     loans.map(async (loan) => {
       const entries = await getEntries(loan.id);
       const summary = buildSummary(loan, entries);
+      // Inject live price when no entries yet
+      if (livePrice && summary.currentXrpPrice == null) {
+        const xrpQty = Number(loan.xrp_qty);
+        summary.currentXrpPrice = livePrice.idr;
+        summary.currentPortfolioValue = livePrice.idr * xrpQty;
+        summary.netPnl = summary.currentPortfolioValue - summary.totalPaidSoFar;
+        summary.netPosition = summary.currentPortfolioValue - summary.remainingPrincipal;
+        summary.roi = summary.totalPaidSoFar > 0
+          ? (summary.netPnl / summary.totalPaidSoFar) * 100 : null;
+      }
       return { loan, summary };
     })
   );

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getLoan, getEntries } from "@/lib/db";
 import { buildSchedule, buildSummary } from "@/lib/calc";
+import { fetchXrpPrice } from "@/lib/coingecko";
 import { LoanChart } from "@/components/LoanChart";
 import { MonthlyTable } from "@/components/MonthlyTable";
 import { idr, xrp, pct, date, pnlColor } from "@/lib/fmt";
@@ -17,12 +18,41 @@ export default async function LoanDetailPage({
   const loan = await getLoan(Number(id));
   if (!loan) notFound();
 
-  const entries = await getEntries(loan.id);
+  const [entries, livePrice] = await Promise.all([
+    getEntries(loan.id),
+    fetchXrpPrice().catch(() => null),
+  ]);
+
   const schedule = buildSchedule(loan, entries);
   const summary = buildSummary(loan, entries);
 
+  // Use live price when no entries exist yet, or always for the "current" row
+  const currentXrpPrice = livePrice?.idr ?? summary.currentXrpPrice;
+
+  // Live portfolio value uses live price × qty from latest entry (or initial qty)
+  const xrpQty =
+    entries.length > 0
+      ? Number(entries[entries.length - 1].xrp_qty_held)
+      : Number(loan.xrp_qty);
+  const livePortfolioValue = currentXrpPrice != null ? currentXrpPrice * xrpQty : null;
+
+  // Recompute P&L with live price
+  const liveNetPnl =
+    livePortfolioValue != null ? livePortfolioValue - summary.totalPaidSoFar : null;
+  const liveNetPosition =
+    livePortfolioValue != null ? livePortfolioValue - summary.remainingPrincipal : null;
+  const liveRoi =
+    liveNetPnl != null && summary.totalPaidSoFar > 0
+      ? (liveNetPnl / summary.totalPaidSoFar) * 100
+      : null;
+
   const nextMonth =
     summary.monthsElapsed < loan.term_months ? summary.monthsElapsed + 1 : null;
+
+  const isBelowBreakEven =
+    currentXrpPrice != null &&
+    summary.breakEvenPriceIdr != null &&
+    currentXrpPrice < summary.breakEvenPriceIdr;
 
   return (
     <main className="min-h-screen bg-terminal-bg text-terminal-text">
@@ -64,23 +94,29 @@ export default async function LoanDetailPage({
           ))}
         </div>
 
-        {/* Key metrics */}
+        {/* Key metrics — always use live price */}
         <div className="border border-terminal-border bg-terminal-surface rounded-lg p-4">
-          <div className="font-mono text-[9px] tracking-widest text-terminal-text-muted mb-4">
-            STATUS TERKINI
+          <div className="flex items-center justify-between mb-4">
+            <div className="font-mono text-[9px] tracking-widest text-terminal-text-muted">STATUS TERKINI</div>
+            {livePrice && (
+              <div className="font-mono text-[9px] text-terminal-text-muted">
+                live: <span className="text-terminal-green font-bold">{idr(livePrice.idr)}</span>
+                <span className="ml-1 opacity-50">/ XRP</span>
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Metric
-              label="Nilai Portfolio"
-              value={idr(summary.currentPortfolioValue)}
+              label="Nilai Portfolio (live)"
+              value={idr(livePortfolioValue)}
               color="text-terminal-green"
               large
             />
             <Metric
-              label="Net P&L"
-              value={idr(summary.netPnl, true)}
-              color={pnlColor(summary.netPnl)}
-              sub={pct(summary.roi)}
+              label="Net P&L (live)"
+              value={idr(liveNetPnl, true)}
+              color={pnlColor(liveNetPnl)}
+              sub={pct(liveRoi)}
               large
             />
             <Metric
@@ -95,13 +131,12 @@ export default async function LoanDetailPage({
             />
             <Metric
               label="Posisi vs Hutang"
-              value={idr(summary.netPosition, true)}
-              color={pnlColor(summary.netPosition)}
+              value={idr(liveNetPosition, true)}
+              color={pnlColor(liveNetPosition)}
             />
             <Metric
               label="XRP Dipegang"
-              value={xrp(summary.currentPortfolioValue != null && summary.currentXrpPrice
-                ? summary.currentPortfolioValue / summary.currentXrpPrice : null)}
+              value={xrp(xrpQty)}
               color="text-terminal-text-dim"
             />
           </div>
@@ -111,27 +146,23 @@ export default async function LoanDetailPage({
         <div
           className="border rounded-lg p-4 font-mono"
           style={{
-            borderColor: summary.currentXrpPrice != null && summary.breakEvenPriceIdr != null
-              && summary.currentXrpPrice >= summary.breakEvenPriceIdr
-              ? "#00ff4130" : "#ffb30030",
-            background: summary.currentXrpPrice != null && summary.breakEvenPriceIdr != null
-              && summary.currentXrpPrice >= summary.breakEvenPriceIdr
-              ? "#00ff4108" : "#ffb30008",
+            borderColor: isBelowBreakEven ? "#ffb30030" : "#00ff4130",
+            background: isBelowBreakEven ? "#ffb30008" : "#00ff4108",
           }}
         >
           <div className="text-[9px] tracking-widest text-terminal-text-muted mb-3">BREAK-EVEN ANALYSIS</div>
           <div className="grid grid-cols-2 gap-4">
             <Metric
               label="Harga XRP Saat Ini"
-              value={idr(summary.currentXrpPrice)}
+              value={idr(currentXrpPrice)}
               color="text-terminal-green"
             />
             <Metric
               label="Harga Break-Even"
               value={idr(summary.breakEvenPriceIdr)}
               color={
-                summary.currentXrpPrice != null && summary.breakEvenPriceIdr != null
-                  ? summary.currentXrpPrice >= summary.breakEvenPriceIdr
+                currentXrpPrice != null && summary.breakEvenPriceIdr != null
+                  ? currentXrpPrice >= summary.breakEvenPriceIdr
                     ? "text-terminal-green"
                     : "text-terminal-amber"
                   : "text-terminal-text-muted"
@@ -141,7 +172,7 @@ export default async function LoanDetailPage({
               label="Cicilan/Bulan"
               value={idr(summary.monthlyPayment, true)}
               color="text-terminal-amber"
-              sub={`(pokok ${idr(summary.monthlyCapital, true)} + bunga ${idr(summary.monthlyInterest, true)})`}
+              sub={`pokok ${idr(summary.monthlyCapital, true)} + bunga ${idr(summary.monthlyInterest, true)}`}
             />
             <Metric
               label="Progress"
@@ -151,7 +182,6 @@ export default async function LoanDetailPage({
             />
           </div>
 
-          {/* Progress bar */}
           <div className="mt-4">
             <div className="h-1.5 bg-terminal-border rounded-full overflow-hidden">
               <div
@@ -161,11 +191,11 @@ export default async function LoanDetailPage({
             </div>
           </div>
 
-          {summary.currentXrpPrice != null && summary.breakEvenPriceIdr != null && (
+          {currentXrpPrice != null && summary.breakEvenPriceIdr != null && (
             <p className="text-[10px] text-terminal-text-muted mt-3 leading-relaxed">
-              {summary.currentXrpPrice >= summary.breakEvenPriceIdr
+              {currentXrpPrice >= summary.breakEvenPriceIdr
                 ? `✓ Harga XRP saat ini sudah melewati break-even. Portfolio dapat menutup seluruh sisa kewajiban pinjaman.`
-                : `Butuh kenaikan ${pct(((summary.breakEvenPriceIdr - summary.currentXrpPrice) / summary.currentXrpPrice) * 100)} lagi agar portofolio bisa menutup sisa hutang + bunga.`}
+                : `Butuh kenaikan ${pct(((summary.breakEvenPriceIdr - currentXrpPrice) / currentXrpPrice) * 100)} lagi agar portofolio bisa menutup sisa hutang + bunga.`}
             </p>
           )}
         </div>
