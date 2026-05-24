@@ -76,34 +76,32 @@ export default function NewLoanPage() {
     Number(form.principal_idr.replace(/\D/g, "") || 0) + totalInterest;
 
   return (
-    <main className="min-h-screen bg-terminal-bg text-terminal-text">
-      <header className="sticky top-0 z-10 border-b border-terminal-border bg-terminal-bg/95 backdrop-blur-sm">
-        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
-          <a href="/" className="font-mono text-[10px] text-terminal-text-muted hover:text-terminal-green transition-colors">
-            ← KEMBALI
+    <main className="min-h-screen bg-cmc-bg text-cmc-text">
+      <header className="sticky top-0 z-10 border-b border-cmc-border bg-cmc-bg/95 backdrop-blur-sm">
+        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
+          <a href="/" className="text-xs text-cmc-text-muted hover:text-cmc-text transition-colors">
+            ← Kembali
           </a>
-          <span className="text-terminal-border">|</span>
-          <h1 className="font-mono text-xs font-bold text-terminal-green tracking-wider">
-            TAMBAH PINJAMAN BARU
-          </h1>
+          <span className="text-cmc-border">|</span>
+          <h1 className="text-sm font-semibold text-cmc-text">Tambah Pinjaman Baru</h1>
         </div>
       </header>
 
       <div className="max-w-2xl mx-auto px-4 py-6">
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-5">
           {error && (
-            <div className="border border-red-900 bg-red-950 text-terminal-red font-mono text-xs px-3 py-2 rounded">
+            <div className="border border-cmc-red/30 bg-cmc-red/10 text-cmc-red text-sm px-4 py-3 rounded-xl">
               {error}
             </div>
           )}
 
           {/* Loan details */}
-          <div className="border border-terminal-border bg-terminal-surface rounded-lg p-4 space-y-4">
-            <div className="font-mono text-[9px] tracking-widest text-terminal-text-muted">
-              DETAIL PINJAMAN
+          <div className="bg-cmc-surface border border-cmc-border rounded-2xl p-5 space-y-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-cmc-text-muted">
+              Detail Pinjaman
             </div>
 
-            <Field label="NAMA PINJAMAN" hint="misal: XRP Loan BCA 2025">
+            <Field label="Nama Pinjaman" hint="misal: XRP Loan BCA 2025">
               <input
                 type="text"
                 required
@@ -115,7 +113,7 @@ export default function NewLoanPage() {
             </Field>
 
             <div className="grid grid-cols-2 gap-4">
-              <Field label="JUMLAH PINJAMAN (IDR)">
+              <Field label="Jumlah Pinjaman (IDR)">
                 <input
                   type="text"
                   required
@@ -125,7 +123,7 @@ export default function NewLoanPage() {
                   className="input-field"
                 />
               </Field>
-              <Field label="TENOR (BULAN)">
+              <Field label="Tenor (Bulan)">
                 <input
                   type="number"
                   required
@@ -138,7 +136,7 @@ export default function NewLoanPage() {
               </Field>
             </div>
 
-            <Field label="TANGGAL MULAI">
+            <Field label="Tanggal Mulai">
               <input
                 type="date"
                 required
@@ -150,13 +148,13 @@ export default function NewLoanPage() {
           </div>
 
           {/* XRP purchase */}
-          <div className="border border-terminal-border bg-terminal-surface rounded-lg p-4 space-y-4">
-            <div className="font-mono text-[9px] tracking-widest text-terminal-text-muted">
-              PEMBELIAN XRP
+          <div className="bg-cmc-surface border border-cmc-border rounded-2xl p-5 space-y-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-cmc-text-muted">
+              Pembelian XRP
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <Field label="JUMLAH XRP DIBELI">
+              <Field label="Jumlah XRP Dibeli">
                 <input
                   type="number"
                   step="any"
@@ -167,8 +165,8 @@ export default function NewLoanPage() {
                   className="input-field"
                 />
               </Field>
-              <Field label="HARGA BELI XRP (IDR)">
-                <div className="flex gap-1">
+              <Field label="Harga Beli XRP (IDR)">
+                <div className="flex gap-2">
                   <input
                     type="text"
                     value={form.xrp_buy_price_idr}
@@ -180,9 +178,9 @@ export default function NewLoanPage() {
                     type="button"
                     onClick={fetchCurrentPrice}
                     disabled={fetchingPrice}
-                    className="font-mono text-[9px] px-2 border border-terminal-green-muted text-terminal-green hover:bg-terminal-green hover:text-terminal-bg rounded transition-colors flex-shrink-0"
+                    className="text-xs font-semibold px-3 bg-cmc-blue/20 border border-cmc-blue/30 text-cmc-blue hover:bg-cmc-blue hover:text-white rounded-lg transition-colors flex-shrink-0"
                   >
-                    {fetchingPrice ? "..." : "LIVE"}
+                    {fetchingPrice ? "..." : "Live"}
                   </button>
                 </div>
               </Field>
@@ -191,28 +189,28 @@ export default function NewLoanPage() {
 
           {/* Preview */}
           {monthlyTotal > 0 && (
-            <div className="border border-terminal-green-muted bg-terminal-surface rounded-lg p-4">
-              <div className="font-mono text-[9px] tracking-widest text-terminal-green mb-3">
-                RINGKASAN CICILAN
+            <div className="bg-cmc-surface border border-cmc-blue/20 rounded-2xl p-5">
+              <div className="text-xs font-semibold uppercase tracking-wide text-cmc-blue mb-4">
+                Ringkasan Cicilan
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-4">
                 {[
-                  { label: "Bunga/bulan (2% flat)", value: `Rp ${monthlyInterest.toLocaleString("id-ID")}`, color: "text-terminal-red" },
-                  { label: "Cicilan pokok/bulan", value: `Rp ${monthlyCapital.toLocaleString("id-ID")}`, color: "text-terminal-text-dim" },
-                  { label: "Total bayar/bulan", value: `Rp ${monthlyTotal.toLocaleString("id-ID")}`, color: "text-terminal-amber" },
-                  { label: "Total bunga keseluruhan", value: `Rp ${totalInterest.toLocaleString("id-ID")}`, color: "text-terminal-red" },
-                  { label: "Total pengembalian", value: `Rp ${totalRepayment.toLocaleString("id-ID")}`, color: "text-terminal-text-dim" },
+                  { label: "Bunga/bulan (2% flat)", value: `Rp ${monthlyInterest.toLocaleString("id-ID")}`, color: "text-cmc-red" },
+                  { label: "Cicilan pokok/bulan", value: `Rp ${monthlyCapital.toLocaleString("id-ID")}`, color: "text-cmc-text-secondary" },
+                  { label: "Total bayar/bulan", value: `Rp ${monthlyTotal.toLocaleString("id-ID")}`, color: "text-cmc-yellow" },
+                  { label: "Total bunga keseluruhan", value: `Rp ${totalInterest.toLocaleString("id-ID")}`, color: "text-cmc-red" },
+                  { label: "Total pengembalian", value: `Rp ${totalRepayment.toLocaleString("id-ID")}`, color: "text-cmc-text" },
                 ].map(({ label, value, color }) => (
                   <div key={label}>
-                    <div className="font-mono text-[9px] text-terminal-text-muted">{label}</div>
-                    <div className={`font-mono text-xs font-bold ${color}`}>{value}</div>
+                    <div className="text-xs text-cmc-text-muted mb-0.5">{label}</div>
+                    <div className={`text-sm font-bold ${color}`}>{value}</div>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          <Field label="CATATAN (opsional)">
+          <Field label="Catatan (opsional)">
             <textarea
               value={form.notes}
               onChange={(e) => set("notes", e.target.value)}
@@ -225,9 +223,9 @@ export default function NewLoanPage() {
           <button
             type="submit"
             disabled={saving}
-            className="w-full font-mono text-sm py-3 border border-terminal-green text-terminal-green hover:bg-terminal-green hover:text-terminal-bg rounded transition-colors disabled:opacity-50"
+            className="w-full text-sm font-semibold py-3 bg-cmc-blue hover:bg-cmc-blue-dim text-white rounded-xl transition-colors disabled:opacity-50"
           >
-            {saving ? "MENYIMPAN..." : "SIMPAN PINJAMAN"}
+            {saving ? "Menyimpan..." : "Simpan Pinjaman"}
           </button>
         </form>
       </div>
@@ -238,9 +236,9 @@ export default function NewLoanPage() {
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <label className="font-mono text-[9px] tracking-widest text-terminal-text-muted block">
+      <label className="text-xs font-medium text-cmc-text-muted block">
         {label}
-        {hint && <span className="ml-2 text-terminal-border normal-case font-normal">{hint}</span>}
+        {hint && <span className="ml-2 text-cmc-text-muted/60 font-normal">{hint}</span>}
       </label>
       {children}
     </div>

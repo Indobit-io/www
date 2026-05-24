@@ -10,79 +10,75 @@ interface Props {
 
 export function LoanCard({ loan, summary }: Props) {
   const progressPct = Math.round((summary.monthsElapsed / loan.term_months) * 100);
+  const isPositive = summary.netPnl != null && summary.netPnl >= 0;
+  const isNegative = summary.netPnl != null && summary.netPnl < 0;
 
   return (
     <Link href={`/loans/${loan.id}`}>
-      <div className="border border-terminal-border bg-terminal-surface rounded-lg p-4 hover:border-terminal-green-muted transition-colors cursor-pointer space-y-3">
+      <div className="bg-cmc-surface border border-cmc-border rounded-2xl p-5 hover:border-cmc-blue/50 transition-all duration-200 cursor-pointer space-y-4 group">
         {/* Top row */}
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="font-mono text-[9px] tracking-widest text-terminal-text-muted mb-0.5">
-              {loan.asset} LOAN
+            <div className="text-xs font-medium text-cmc-text-muted mb-1">
+              {loan.asset} · {loan.term_months} bulan · {(Number(loan.monthly_interest_rate) * 100).toFixed(0)}%/bln
             </div>
-            <h2 className="font-mono text-sm font-bold text-terminal-green tracking-wide">
+            <h2 className="text-base font-semibold text-cmc-text group-hover:text-white transition-colors">
               {loan.name}
             </h2>
           </div>
           <div className="text-right flex-shrink-0">
-            <div className="font-mono text-xs font-bold text-terminal-text-dim">
+            <div className="text-sm font-bold text-cmc-text">
               {idr(loan.principal_idr, true)}
             </div>
-            <div className="font-mono text-[9px] text-terminal-text-muted">
-              {loan.term_months} bulan · {(Number(loan.monthly_interest_rate) * 100).toFixed(0)}%/bln
-            </div>
+            <div className="text-xs text-cmc-text-muted mt-0.5">pokok pinjaman</div>
           </div>
         </div>
 
         {/* Progress bar */}
         <div>
-          <div className="flex justify-between font-mono text-[9px] text-terminal-text-muted mb-1">
-            <span>Bulan {summary.monthsElapsed}/{loan.term_months}</span>
-            <span>{progressPct}%</span>
+          <div className="flex justify-between text-xs text-cmc-text-muted mb-1.5">
+            <span>Bulan {summary.monthsElapsed} / {loan.term_months}</span>
+            <span className="font-medium">{progressPct}%</span>
           </div>
-          <div className="h-1 bg-terminal-border rounded-full overflow-hidden">
+          <div className="h-1.5 bg-cmc-border rounded-full overflow-hidden">
             <div
-              className="h-full bg-terminal-green rounded-full transition-all duration-500"
+              className="h-full bg-cmc-blue rounded-full transition-all duration-500"
               style={{ width: `${progressPct}%` }}
             />
           </div>
         </div>
 
         {/* Metrics */}
-        <div className="grid grid-cols-3 gap-2 pt-1">
+        <div className="grid grid-cols-3 gap-3 pt-1">
           <div>
-            <div className="font-mono text-[9px] text-terminal-text-muted mb-0.5">NILAI</div>
-            <div className="font-mono text-xs font-bold text-terminal-green">
+            <div className="text-xs text-cmc-text-muted mb-0.5">Nilai</div>
+            <div className="text-sm font-bold text-cmc-text">
               {idr(summary.currentPortfolioValue, true)}
             </div>
           </div>
           <div>
-            <div className="font-mono text-[9px] text-terminal-text-muted mb-0.5">NET P&L</div>
-            <div className={`font-mono text-xs font-bold ${pnlColor(summary.netPnl)}`}>
+            <div className="text-xs text-cmc-text-muted mb-0.5">Net P&L</div>
+            <div className={`text-sm font-bold ${pnlColor(summary.netPnl)}`}>
               {idr(summary.netPnl, true)}
             </div>
           </div>
           <div>
-            <div className="font-mono text-[9px] text-terminal-text-muted mb-0.5">ROI</div>
-            <div className={`font-mono text-xs font-bold ${pnlColor(summary.roi)}`}>
+            <div className="text-xs text-cmc-text-muted mb-0.5">ROI</div>
+            <div className={`text-sm font-bold ${pnlColor(summary.roi)}`}>
               {pct(summary.roi)}
             </div>
           </div>
         </div>
 
-        {/* Break-even price */}
+        {/* Break-even row */}
         {summary.breakEvenPriceIdr != null && summary.currentXrpPrice != null && (
-          <div className="flex items-center justify-between font-mono text-[9px] pt-1 border-t border-terminal-border/40">
-            <span className="text-terminal-text-muted">Break-even</span>
-            <span className={
-              summary.currentXrpPrice >= summary.breakEvenPriceIdr
-                ? "text-terminal-green font-bold"
-                : "text-terminal-amber"
-            }>
-              {idr(summary.breakEvenPriceIdr)} / XRP
+          <div className="flex items-center justify-between text-xs pt-3 border-t border-cmc-border">
+            <span className="text-cmc-text-muted">Break-even XRP</span>
+            <span className={`font-semibold ${summary.currentXrpPrice >= summary.breakEvenPriceIdr ? "text-cmc-green" : "text-cmc-yellow"}`}>
+              {idr(summary.breakEvenPriceIdr)}
               {summary.currentXrpPrice >= summary.breakEvenPriceIdr
-                ? " ✓ AMAN"
-                : ` (masih ${pct(((summary.breakEvenPriceIdr - summary.currentXrpPrice) / summary.currentXrpPrice) * 100)} lagi)`}
+                ? " ✓"
+                : ` (${pct(((summary.breakEvenPriceIdr - summary.currentXrpPrice) / summary.currentXrpPrice) * 100)} lagi)`}
             </span>
           </div>
         )}

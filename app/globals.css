@@ -1,20 +1,21 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --bg: #0a0f0a;
-  --surface: #0d1a0d;
-  --border: #1a3a1a;
-  --green: #00ff41;
-  --green-dim: #00cc33;
-  --amber: #ffb300;
-  --red: #ff3333;
-  --text: #c8ffc8;
-  --text-dim: #7ab87a;
-  --text-muted: #3d6b3d;
+  --bg: #0d1117;
+  --surface: #161b22;
+  --surface-2: #1c2230;
+  --border: #21262d;
+  --blue: #3861fb;
+  --green: #16c784;
+  --red: #ea3943;
+  --yellow: #f0b90b;
+  --text: #eff2f5;
+  --text-secondary: #a1a7bb;
+  --text-muted: #5c6370;
 }
 
 * {
@@ -24,7 +25,7 @@
 html {
   background-color: var(--bg);
   color: var(--text);
-  font-family: 'IBM Plex Mono', 'Courier New', monospace;
+  font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -34,7 +35,6 @@ body {
   min-height: 100vh;
 }
 
-/* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -50,41 +50,32 @@ body {
   background: var(--text-muted);
 }
 
-/* Selection */
 ::selection {
-  background: var(--green-dim);
-  color: var(--bg);
+  background: #3861fb40;
+  color: var(--text);
 }
 
-/* Terminal cursor blink */
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-.cursor-blink {
-  animation: blink 1s step-end infinite;
-}
-
-/* Form inputs — terminal style */
 .input-field {
   width: 100%;
-  background: #0a0f0a;
-  border: 1px solid #1a3a1a;
-  border-radius: 4px;
-  padding: 8px 10px;
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
-  color: #c8ffc8;
+  background: #0d1117;
+  border: 1px solid #21262d;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 13px;
+  color: #eff2f5;
   outline: none;
-  transition: border-color 0.15s ease;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
   -webkit-appearance: none;
 }
-.input-field::placeholder { color: #3d6b3d; }
+.input-field::placeholder {
+  color: #5c6370;
+}
 .input-field:focus {
-  border-color: #00ff41;
-  box-shadow: 0 0 0 1px #00ff4120;
+  border-color: #3861fb;
+  box-shadow: 0 0 0 3px #3861fb20;
 }
 .input-field::-webkit-calendar-picker-indicator {
-  filter: invert(0.5) sepia(1) saturate(3) hue-rotate(85deg);
+  filter: invert(0.6);
   cursor: pointer;
 }

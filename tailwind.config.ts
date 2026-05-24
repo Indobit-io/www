@@ -9,26 +9,25 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        mono: ["IBM Plex Mono", "Courier New", "monospace"],
         sans: ["Inter", "system-ui", "sans-serif"],
+        mono: ["Inter", "system-ui", "sans-serif"],
       },
       colors: {
-        terminal: {
-          bg: "#0a0f0a",
-          surface: "#0d1a0d",
-          border: "#1a3a1a",
-          green: "#00ff41",
-          "green-dim": "#00cc33",
-          "green-muted": "#006618",
-          amber: "#ffb300",
-          red: "#ff3333",
-          text: "#c8ffc8",
-          "text-dim": "#7ab87a",
-          "text-muted": "#3d6b3d",
+        cmc: {
+          bg: "#0d1117",
+          surface: "#161b22",
+          "surface-2": "#1c2230",
+          border: "#21262d",
+          blue: "#3861fb",
+          "blue-dim": "#2a4fd6",
+          green: "#16c784",
+          "green-dim": "#0da86e",
+          red: "#ea3943",
+          yellow: "#f0b90b",
+          text: "#eff2f5",
+          "text-secondary": "#a1a7bb",
+          "text-muted": "#5c6370",
         },
-      },
-      animation: {
-        pulse: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
       },
     },
   },

@@ -2,7 +2,7 @@
 
 import {
   LineChart, Line, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, ReferenceLine, Legend,
+  ResponsiveContainer, ReferenceLine,
 } from "recharts";
 import type { LoanScheduleRow } from "@/lib/calc";
 
@@ -24,11 +24,14 @@ function TooltipContent({ active, payload, label }: {
 }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-terminal-bg border border-terminal-border px-3 py-2 font-mono text-[10px] space-y-1">
-      <div className="text-terminal-text-muted mb-1">{label}</div>
+    <div className="bg-cmc-surface-2 border border-cmc-border px-3 py-2.5 rounded-xl text-xs space-y-1.5 shadow-xl">
+      <div className="text-cmc-text-muted font-medium mb-2">{label}</div>
       {payload.map((p) => (
-        <div key={p.name} style={{ color: p.color }}>
-          {p.name}: Rp {Number(p.value).toLocaleString("id-ID")}
+        <div key={p.name} className="flex items-center justify-between gap-4">
+          <span style={{ color: p.color }} className="font-medium">{p.name}</span>
+          <span className="text-cmc-text font-semibold">
+            Rp {Number(p.value).toLocaleString("id-ID")}
+          </span>
         </div>
       ))}
     </div>
@@ -47,54 +50,51 @@ export function LoanChart({ rows, principalIdr }: Props) {
 
   if (data.length < 1) {
     return (
-      <div className="flex items-center justify-center h-40 font-mono text-[10px] text-terminal-text-muted border border-dashed border-terminal-border rounded">
-        belum ada data
+      <div className="flex items-center justify-center h-40 text-sm text-cmc-text-muted border border-dashed border-cmc-border rounded-xl">
+        Belum ada data
       </div>
     );
   }
 
   return (
-    <ResponsiveContainer width="100%" height={220}>
+    <ResponsiveContainer width="100%" height={240}>
       <LineChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
         <XAxis
           dataKey="month"
-          tick={{ fill: "#3d6b3d", fontSize: 9, fontFamily: "IBM Plex Mono" }}
-          axisLine={{ stroke: "#1a3a1a" }}
+          tick={{ fill: "#5c6370", fontSize: 11, fontFamily: "Inter" }}
+          axisLine={{ stroke: "#21262d" }}
           tickLine={false}
         />
         <YAxis
           tickFormatter={fmt}
-          tick={{ fill: "#3d6b3d", fontSize: 9, fontFamily: "IBM Plex Mono" }}
+          tick={{ fill: "#5c6370", fontSize: 11, fontFamily: "Inter" }}
           axisLine={false}
           tickLine={false}
-          width={44}
+          width={48}
         />
         <Tooltip content={<TooltipContent />} />
-        <Legend
-          wrapperStyle={{ fontSize: 9, fontFamily: "IBM Plex Mono", color: "#3d6b3d" }}
-        />
-        <ReferenceLine y={principalIdr} stroke="#1a3a1a" strokeDasharray="4 4" />
+        <ReferenceLine y={principalIdr} stroke="#21262d" strokeDasharray="4 4" />
         <Line
           type="monotone"
           dataKey="Portfolio"
-          stroke="#00ff41"
-          strokeWidth={2}
-          dot={{ r: 3, fill: "#00ff41", stroke: "#0a0f0a" }}
+          stroke="#16c784"
+          strokeWidth={2.5}
+          dot={{ r: 4, fill: "#16c784", stroke: "#161b22", strokeWidth: 2 }}
           isAnimationActive={false}
         />
         <Line
           type="monotone"
           dataKey="Sisa Hutang"
-          stroke="#ff3333"
+          stroke="#ea3943"
           strokeWidth={1.5}
           dot={false}
-          strokeDasharray="4 3"
+          strokeDasharray="5 3"
           isAnimationActive={false}
         />
         <Line
           type="monotone"
           dataKey="Total Dibayar"
-          stroke="#ffb300"
+          stroke="#f0b90b"
           strokeWidth={1.5}
           dot={false}
           strokeDasharray="2 4"

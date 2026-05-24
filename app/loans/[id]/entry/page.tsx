@@ -90,19 +90,18 @@ export default function EntryPage({ params }: { params: Promise<{ id: string }> 
       : null;
 
   return (
-    <main className="min-h-screen bg-terminal-bg text-terminal-text">
-      <header className="sticky top-0 z-10 border-b border-terminal-border bg-terminal-bg/95 backdrop-blur-sm">
-        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
+    <main className="min-h-screen bg-cmc-bg text-cmc-text">
+      <header className="sticky top-0 z-10 border-b border-cmc-border bg-cmc-bg/95 backdrop-blur-sm">
+        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
           <a
             href={loanId ? `/loans/${loanId}` : "/"}
-            className="font-mono text-[10px] text-terminal-text-muted hover:text-terminal-green transition-colors"
+            className="text-xs text-cmc-text-muted hover:text-cmc-text transition-colors"
           >
-            ← KEMBALI
+            ← Kembali
           </a>
-          <span className="text-terminal-border">|</span>
-          <h1 className="font-mono text-xs font-bold text-terminal-green tracking-wider">
-            CATAT BULAN {form.month_number}
-            {loan ? ` — ${loan.name}` : ""}
+          <span className="text-cmc-border">|</span>
+          <h1 className="text-sm font-semibold text-cmc-text">
+            Catat Bulan {form.month_number}{loan ? ` — ${loan.name}` : ""}
           </h1>
         </div>
       </header>
@@ -110,19 +109,19 @@ export default function EntryPage({ params }: { params: Promise<{ id: string }> 
       <div className="max-w-2xl mx-auto px-4 py-6">
         <form onSubmit={handleSubmit} className="space-y-5">
           {error && (
-            <div className="border border-red-900 bg-red-950 text-terminal-red font-mono text-xs px-3 py-2 rounded">
+            <div className="border border-cmc-red/30 bg-cmc-red/10 text-cmc-red text-sm px-4 py-3 rounded-xl">
               {error}
             </div>
           )}
 
-          <div className="border border-terminal-border bg-terminal-surface rounded-lg p-4 space-y-4">
-            <div className="font-mono text-[9px] tracking-widest text-terminal-text-muted">
-              DATA BULAN INI
+          <div className="bg-cmc-surface border border-cmc-border rounded-2xl p-5 space-y-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-cmc-text-muted">
+              Data Bulan Ini
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="font-mono text-[9px] tracking-widest text-terminal-text-muted block">NOMOR BULAN</label>
+                <label className="text-xs font-medium text-cmc-text-muted block">Nomor Bulan</label>
                 <input
                   type="number"
                   required
@@ -134,7 +133,7 @@ export default function EntryPage({ params }: { params: Promise<{ id: string }> 
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="font-mono text-[9px] tracking-widest text-terminal-text-muted block">TANGGAL CATAT</label>
+                <label className="text-xs font-medium text-cmc-text-muted block">Tanggal Catat</label>
                 <input
                   type="date"
                   required
@@ -146,7 +145,7 @@ export default function EntryPage({ params }: { params: Promise<{ id: string }> 
             </div>
 
             <div className="space-y-1.5">
-              <label className="font-mono text-[9px] tracking-widest text-terminal-text-muted block">HARGA XRP/IDR</label>
+              <label className="text-xs font-medium text-cmc-text-muted block">Harga XRP/IDR</label>
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -160,16 +159,16 @@ export default function EntryPage({ params }: { params: Promise<{ id: string }> 
                   type="button"
                   onClick={fetchPrice}
                   disabled={fetchingPrice}
-                  className="font-mono text-[9px] px-3 border border-terminal-green text-terminal-green hover:bg-terminal-green hover:text-terminal-bg rounded transition-colors flex-shrink-0"
+                  className="text-xs font-semibold px-3 bg-cmc-blue/20 border border-cmc-blue/30 text-cmc-blue hover:bg-cmc-blue hover:text-white rounded-lg transition-colors flex-shrink-0"
                 >
-                  {fetchingPrice ? "..." : "↻ AMBIL"}
+                  {fetchingPrice ? "..." : "↻ Live"}
                 </button>
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <label className="font-mono text-[9px] tracking-widest text-terminal-text-muted block">
-                JUMLAH XRP DIPEGANG
+              <label className="text-xs font-medium text-cmc-text-muted block">
+                Jumlah XRP Dipegang
               </label>
               <input
                 type="number"
@@ -181,7 +180,7 @@ export default function EntryPage({ params }: { params: Promise<{ id: string }> 
                 placeholder={loan ? String(loan.xrp_qty) : "5000"}
                 className="input-field"
               />
-              <p className="font-mono text-[9px] text-terminal-text-muted">
+              <p className="text-xs text-cmc-text-muted">
                 Ubah jika ada pembelian/penjualan tambahan bulan ini
               </p>
             </div>
@@ -189,9 +188,9 @@ export default function EntryPage({ params }: { params: Promise<{ id: string }> 
 
           {/* Live preview */}
           {portfolioValue != null && loan && (
-            <div className="border border-terminal-green-muted bg-terminal-surface rounded-lg p-4">
-              <div className="font-mono text-[9px] tracking-widest text-terminal-green mb-3">
-                PREVIEW BULAN {form.month_number}
+            <div className="bg-cmc-surface border border-cmc-blue/20 rounded-2xl p-5">
+              <div className="text-xs font-semibold uppercase tracking-wide text-cmc-blue mb-4">
+                Preview Bulan {form.month_number}
               </div>
               {(() => {
                 const monthlyCapital = Math.round(loan.principal_idr / loan.term_months);
@@ -202,16 +201,16 @@ export default function EntryPage({ params }: { params: Promise<{ id: string }> 
                 const netPos = portfolioValue - remainingPrincipal;
 
                 return (
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-4">
                     {[
-                      { label: "Nilai Portfolio", value: `Rp ${portfolioValue.toLocaleString("id-ID")}`, color: "text-terminal-green" },
-                      { label: "Sisa Hutang", value: `Rp ${remainingPrincipal.toLocaleString("id-ID")}`, color: "text-terminal-text-dim" },
-                      { label: "Net P&L", value: `Rp ${netPnl.toLocaleString("id-ID")}`, color: netPnl >= 0 ? "text-terminal-green" : "text-terminal-red" },
-                      { label: "Posisi vs Hutang", value: `Rp ${netPos.toLocaleString("id-ID")}`, color: netPos >= 0 ? "text-terminal-green" : "text-terminal-red" },
+                      { label: "Nilai Portfolio", value: `Rp ${portfolioValue.toLocaleString("id-ID")}`, color: "text-cmc-green" },
+                      { label: "Sisa Hutang", value: `Rp ${remainingPrincipal.toLocaleString("id-ID")}`, color: "text-cmc-text-secondary" },
+                      { label: "Net P&L", value: `Rp ${netPnl.toLocaleString("id-ID")}`, color: netPnl >= 0 ? "text-cmc-green" : "text-cmc-red" },
+                      { label: "Posisi vs Hutang", value: `Rp ${netPos.toLocaleString("id-ID")}`, color: netPos >= 0 ? "text-cmc-green" : "text-cmc-red" },
                     ].map(({ label, value, color }) => (
                       <div key={label}>
-                        <div className="font-mono text-[9px] text-terminal-text-muted">{label}</div>
-                        <div className={`font-mono text-xs font-bold ${color}`}>{value}</div>
+                        <div className="text-xs text-cmc-text-muted mb-0.5">{label}</div>
+                        <div className={`text-sm font-bold ${color}`}>{value}</div>
                       </div>
                     ))}
                   </div>
@@ -221,7 +220,7 @@ export default function EntryPage({ params }: { params: Promise<{ id: string }> 
           )}
 
           <div className="space-y-1.5">
-            <label className="font-mono text-[9px] tracking-widest text-terminal-text-muted block">CATATAN (opsional)</label>
+            <label className="text-xs font-medium text-cmc-text-muted block">Catatan (opsional)</label>
             <textarea
               value={form.notes}
               onChange={(e) => set("notes", e.target.value)}
@@ -234,9 +233,9 @@ export default function EntryPage({ params }: { params: Promise<{ id: string }> 
           <button
             type="submit"
             disabled={saving}
-            className="w-full font-mono text-sm py-3 border border-terminal-green text-terminal-green hover:bg-terminal-green hover:text-terminal-bg rounded transition-colors disabled:opacity-50"
+            className="w-full text-sm font-semibold py-3 bg-cmc-blue hover:bg-cmc-blue-dim text-white rounded-xl transition-colors disabled:opacity-50"
           >
-            {saving ? "MENYIMPAN..." : "SIMPAN DATA BULAN INI"}
+            {saving ? "Menyimpan..." : "Simpan Data Bulan Ini"}
           </button>
         </form>
       </div>

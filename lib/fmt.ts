@@ -39,8 +39,8 @@ export function date(value: string | null | undefined): string {
 }
 
 export function pnlColor(value: number | null | undefined): string {
-  if (value == null) return "text-terminal-text-muted";
-  if (value > 0) return "text-terminal-green";
-  if (value < 0) return "text-terminal-red";
-  return "text-terminal-text-dim";
+  if (value == null) return "text-cmc-text-muted";
+  if (value > 0) return "text-cmc-green";
+  if (value < 0) return "text-cmc-red";
+  return "text-cmc-text-secondary";
 }
