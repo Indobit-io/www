@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 // Cache so rapid client polls don't hammer external APIs
 let cache: { price: XrpPrice; at: number } | null = null;
-const CACHE_TTL_MS = 5_000;
+const CACHE_TTL_MS = 1_500;
 
 export async function GET() {
   const headers = { "Cache-Control": "no-store, max-age=0" };

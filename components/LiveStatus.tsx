@@ -26,17 +26,15 @@ function Metric({ label, value, color, sub, large }: {
 
 export function LiveStatus({ xrpQty, remainingPrincipal, realizedPnl, roi, totalPaidSoFar, initialXrpPrice }: Props) {
   const [xrpPrice, setXrpPrice] = useState<number | null>(initialXrpPrice);
-  const [lastUpdated, setLastUpdated] = useState<number>(Date.now());
+  const [polledAt, setPolledAt] = useState<Date | null>(null);
 
   useEffect(() => {
     function poll() {
       fetch("/api/xrp-price", { cache: "no-store" })
         .then((r) => r.json())
         .then((data) => {
-          if (data.idr) {
-            setXrpPrice(data.idr);
-            setLastUpdated(Date.now());
-          }
+          setPolledAt(new Date());
+          if (data.idr) setXrpPrice(data.idr);
         })
         .catch(() => {});
     }
@@ -58,6 +56,11 @@ export function LiveStatus({ xrpQty, remainingPrincipal, realizedPnl, roi, total
         <div className="flex items-center gap-1.5 text-xs text-cmc-text-muted">
           <span className="w-1.5 h-1.5 rounded-full bg-cmc-green animate-pulse inline-block" />
           <span>Live</span>
+          {polledAt && (
+            <span className="text-cmc-text-muted/60">
+              · {polledAt.toLocaleTimeString("id-ID")}
+            </span>
+          )}
         </div>
       </div>
       <div className="grid grid-cols-2 gap-5">
