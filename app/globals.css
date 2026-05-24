@@ -65,53 +65,26 @@ body {
   animation: blink 1s step-end infinite;
 }
 
-/* Flow diagram edge animation */
-@keyframes flowDash {
-  from { stroke-dashoffset: 200; }
-  to   { stroke-dashoffset: 0; }
-}
-
-/* Range slider — terminal style */
-input[type=range] {
-  -webkit-appearance: none;
-  appearance: none;
-  background: transparent;
-  cursor: pointer;
-}
-input[type=range]::-webkit-slider-runnable-track {
-  height: 3px;
-  border-radius: 2px;
-}
-input[type=range]::-moz-range-track {
-  height: 3px;
-  border-radius: 2px;
-  background: #1a3a1a;
-}
-input[type=range]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 13px;
-  height: 13px;
-  border-radius: 3px;
-  background: #00ff41;
-  margin-top: -5px;
-  box-shadow: 0 0 6px #00ff4180;
-  transition: box-shadow 0.15s ease;
-}
-input[type=range]::-moz-range-thumb {
-  width: 13px;
-  height: 13px;
-  border-radius: 3px;
-  background: #00ff41;
-  border: none;
-  box-shadow: 0 0 6px #00ff4180;
-}
-input[type=range]:focus {
+/* Form inputs — terminal style */
+.input-field {
+  width: 100%;
+  background: #0a0f0a;
+  border: 1px solid #1a3a1a;
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: #c8ffc8;
   outline: none;
+  transition: border-color 0.15s ease;
+  -webkit-appearance: none;
 }
-input[type=range]:focus::-webkit-slider-thumb {
-  box-shadow: 0 0 10px #00ff41;
+.input-field::placeholder { color: #3d6b3d; }
+.input-field:focus {
+  border-color: #00ff41;
+  box-shadow: 0 0 0 1px #00ff4120;
 }
-input[type=range]:active::-webkit-slider-thumb {
-  box-shadow: 0 0 14px #00ff41, 0 0 4px #00ff41;
+.input-field::-webkit-calendar-picker-indicator {
+  filter: invert(0.5) sepia(1) saturate(3) hue-rotate(85deg);
+  cursor: pointer;
 }

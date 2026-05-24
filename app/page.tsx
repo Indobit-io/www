@@ -1,82 +1,99 @@
-import { Dashboard } from "@/components/Dashboard";
-import { METRIC_IDS, type MetricId } from "@/lib/config";
-import type { ApiDataResponse } from "./api/data/route";
+import Link from "next/link";
+import { getLoans, getEntries } from "@/lib/db";
+import { buildSummary } from "@/lib/calc";
+import { LoanCard } from "@/components/LoanCard";
 
-async function getData(): Promise<ApiDataResponse | null> {
-  try {
-    const baseUrl =
-      process.env.NEXT_PUBLIC_BASE_URL ??
-      (process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : "http://localhost:3000");
-    const res = await fetch(`${baseUrl}/api/data`, { next: { revalidate: 60 } });
-    if (!res.ok) return null;
-    return res.json();
-  } catch {
-    return null;
-  }
-}
+export const dynamic = "force-dynamic";
 
-function getStatusDot(
-  metrics: ApiDataResponse["metrics"]
-): "green" | "yellow" | "red" {
-  const updates = Object.values(metrics)
-    .map((m) => m.updated)
-    .filter(Boolean) as string[];
-  if (!updates.length) return "red";
-  const ageHours =
-    (Date.now() - Math.max(...updates.map((u) => new Date(u).getTime()))) /
-    3_600_000;
-  if (ageHours < 24) return "green";
-  if (ageHours < 168) return "yellow";
-  return "red";
-}
+export default async function HomePage() {
+  const loans = await getLoans();
 
-function formatLastUpdate(metrics: ApiDataResponse["metrics"]): string {
-  const updates = Object.values(metrics)
-    .map((m) => m.updated)
-    .filter(Boolean) as string[];
-  if (!updates.length) return "No data";
-  const latest = new Date(Math.max(...updates.map((u) => new Date(u).getTime())));
-  return latest.toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZoneName: "short",
-  });
-}
-
-export default async function DashboardPage() {
-  const data = await getData();
-
-  if (!data) {
-    return (
-      <main className="min-h-screen bg-terminal-bg flex flex-col items-center justify-center p-8">
-        <div className="font-mono text-sm text-terminal-text-dim text-center space-y-2">
-          <div className="text-terminal-green text-2xl">▌</div>
-          <div>No data yet.</div>
-          <div className="text-terminal-text-muted text-xs">
-            Trigger <code className="text-terminal-green">/api/fetch-data</code> to seed the database.
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  const liveValues: Partial<Record<MetricId, number>> = {};
-  for (const id of METRIC_IDS) {
-    const m = data.metrics[id];
-    if (m?.current != null) liveValues[id] = m.current;
-  }
+  const loansWithSummary = await Promise.all(
+    loans.map(async (loan) => {
+      const entries = await getEntries(loan.id);
+      const summary = buildSummary(loan, entries);
+      return { loan, summary };
+    })
+  );
 
   return (
-    <Dashboard
-      liveValues={liveValues}
-      signalEvents={data.signal_events ?? []}
-      lastUpdate={formatLastUpdate(data.metrics)}
-      statusDot={getStatusDot(data.metrics)}
-    />
+    <main className="min-h-screen bg-terminal-bg text-terminal-text">
+      <header className="sticky top-0 z-10 border-b border-terminal-border bg-terminal-bg/95 backdrop-blur-sm">
+        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <span className="text-terminal-green font-mono text-xs opacity-50">▌</span>
+            <div>
+              <h1 className="font-mono text-xs font-bold text-terminal-green tracking-wider">
+                CRYPTO LOAN TRACKER
+              </h1>
+              <div className="font-mono text-[9px] text-terminal-text-muted">
+                monitor kinerja pinjaman beli aset kripto
+              </div>
+            </div>
+          </div>
+          <Link
+            href="/loans/new"
+            className="font-mono text-[10px] px-3 py-1.5 border border-terminal-green text-terminal-green hover:bg-terminal-green hover:text-terminal-bg rounded transition-colors"
+          >
+            + PINJAMAN
+          </Link>
+        </div>
+      </header>
+
+      <div className="max-w-2xl mx-auto px-4 py-6">
+        {loans.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-24 space-y-4 text-center">
+            <div className="font-mono text-terminal-green text-4xl opacity-30">₿</div>
+            <div className="font-mono text-sm text-terminal-text-dim">Belum ada pinjaman</div>
+            <p className="font-mono text-[10px] text-terminal-text-muted max-w-xs leading-relaxed">
+              Tambahkan detail pinjaman Anda untuk mulai melacak kinerja portfolio XRP vs biaya bunga.
+            </p>
+            <Link
+              href="/loans/new"
+              className="font-mono text-xs px-4 py-2 border border-terminal-green text-terminal-green hover:bg-terminal-green hover:text-terminal-bg rounded transition-colors"
+            >
+              + Tambah Pinjaman Pertama
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Aggregate summary if multiple loans */}
+            {loansWithSummary.length > 1 && (
+              <div className="border border-terminal-border bg-terminal-surface rounded-lg p-4 grid grid-cols-3 gap-3">
+                {[
+                  {
+                    label: "TOTAL PINJAMAN",
+                    value: `Rp ${loansWithSummary.reduce((s, { loan }) => s + loan.principal_idr, 0).toLocaleString("id-ID")}`,
+                    color: "text-terminal-text-dim",
+                  },
+                  {
+                    label: "TOTAL DIBAYAR",
+                    value: `Rp ${loansWithSummary.reduce((s, { summary }) => s + summary.totalPaidSoFar, 0).toLocaleString("id-ID")}`,
+                    color: "text-terminal-amber",
+                  },
+                  {
+                    label: "TOTAL NILAI",
+                    value: `Rp ${loansWithSummary.reduce((s, { summary }) => s + (summary.currentPortfolioValue ?? 0), 0).toLocaleString("id-ID")}`,
+                    color: "text-terminal-green",
+                  },
+                ].map(({ label, value, color }) => (
+                  <div key={label}>
+                    <div className="font-mono text-[9px] tracking-widest text-terminal-text-muted mb-1">{label}</div>
+                    <div className={`font-mono text-xs font-bold ${color}`}>{value}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Loan cards */}
+            <div className="space-y-3">
+              {loansWithSummary.map(({ loan, summary }) => (
+                <LoanCard key={loan.id} loan={loan} summary={summary} />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </main>
   );
 }
