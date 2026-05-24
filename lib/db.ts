@@ -1,4 +1,8 @@
-import { Pool } from "pg";
+import { Pool, types } from "pg";
+
+// pg returns BIGINT (OID 20) and NUMERIC (OID 1700) as strings by default.
+types.setTypeParser(20, Number);    // BIGINT → number
+types.setTypeParser(1700, Number);  // NUMERIC → number
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
