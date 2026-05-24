@@ -32,7 +32,7 @@ export interface LoanSummary {
   currentPortfolioValue: number | null;
   currentXrpPrice: number | null;
   netPosition: number | null;       // portfolioValue - remainingPrincipal
-  netPnl: number | null;            // portfolioValue - totalRepayment
+  netPnl: number | null;            // portfolioValue - (remainingPrincipal + remainingInterest)
   breakEvenPriceIdr: number | null;
   totalPaidSoFar: number;
   remainingPrincipal: number;
@@ -68,7 +68,8 @@ export function buildSchedule(loan: Loan, entries: MonthlyEntry[]): LoanSchedule
     if (entry) {
       portfolioValueIdr = Number(entry.xrp_price_idr) * Number(entry.xrp_qty_held);
       netPosition = portfolioValueIdr - remainingPrincipal;
-      netPnl = portfolioValueIdr - totalRepayment;
+      const remainingInterest = monthlyInterest * (loan.term_months - m);
+      netPnl = portfolioValueIdr - (Math.max(0, remainingPrincipal) + remainingInterest);
 
       if (prevEntry) {
         const prevValue = Number(prevEntry.xrp_price_idr) * Number(prevEntry.xrp_qty_held);
@@ -124,11 +125,10 @@ export function buildSummary(loan: Loan, entries: MonthlyEntry[]): LoanSummary {
 
   const netPosition =
     currentPortfolioValue != null ? currentPortfolioValue - remainingPrincipal : null;
-  const netPnl =
-    currentPortfolioValue != null ? currentPortfolioValue - totalRepayment : null;
-
   // Break-even = price to cover remaining principal + remaining interest
   const remainingInterest = monthlyInterest * monthsRemaining;
+  const netPnl =
+    currentPortfolioValue != null ? currentPortfolioValue - (remainingPrincipal + remainingInterest) : null;
   const breakEvenPriceIdr =
     currentXrpQty != null && currentXrpQty > 0
       ? (remainingPrincipal + remainingInterest) / currentXrpQty
