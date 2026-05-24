@@ -10,6 +10,7 @@ interface Props {
   roi: number | null;
   totalPaidSoFar: number;
   initialXrpPrice: number | null;
+  idrPerUsd: number;
 }
 
 function Metric({ label, value, color, sub, large }: {
@@ -24,25 +25,35 @@ function Metric({ label, value, color, sub, large }: {
   );
 }
 
-export function LiveStatus({ xrpQty, remainingPrincipal, realizedPnl, roi, totalPaidSoFar, initialXrpPrice }: Props) {
+export function LiveStatus({
+  xrpQty, remainingPrincipal, realizedPnl, roi, totalPaidSoFar, initialXrpPrice, idrPerUsd,
+}: Props) {
   const [xrpPrice, setXrpPrice] = useState<number | null>(initialXrpPrice);
   const [polledAt, setPolledAt] = useState<Date | null>(null);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
-    function poll() {
-      fetch("/api/xrp-price", { cache: "no-store" })
-        .then((r) => r.json())
-        .then((data) => {
-          setPolledAt(new Date());
-          if (data.idr) setXrpPrice(data.idr);
-        })
-        .catch(() => {});
+    async function poll() {
+      try {
+        const res = await fetch(
+          "https://api.binance.com/api/v3/ticker/price?symbol=XRPUSDT",
+          { cache: "no-store" }
+        );
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+        const usdPrice = parseFloat(data.price);
+        setXrpPrice(Math.round(usdPrice * idrPerUsd));
+        setPolledAt(new Date());
+        setError(false);
+      } catch {
+        setError(true);
+      }
     }
 
-    poll(); // fetch immediately on mount
+    poll();
     const id = setInterval(poll, 2000);
     return () => clearInterval(id);
-  }, []);
+  }, [idrPerUsd]);
 
   const portfolioValue = xrpPrice != null ? xrpPrice * xrpQty : null;
   const netPosition = portfolioValue != null ? portfolioValue - remainingPrincipal : null;
@@ -54,12 +65,10 @@ export function LiveStatus({ xrpQty, remainingPrincipal, realizedPnl, roi, total
           Status Terkini
         </div>
         <div className="flex items-center gap-1.5 text-xs text-cmc-text-muted">
-          <span className="w-1.5 h-1.5 rounded-full bg-cmc-green animate-pulse inline-block" />
-          <span>Live</span>
-          {polledAt && (
-            <span className="text-cmc-text-muted/60">
-              · {polledAt.toLocaleTimeString("id-ID")}
-            </span>
+          <span className={`w-1.5 h-1.5 rounded-full inline-block ${error ? "bg-cmc-red" : "bg-cmc-green animate-pulse"}`} />
+          <span>{error ? "Offline" : "Live"}</span>
+          {polledAt && !error && (
+            <span className="opacity-50">· {polledAt.toLocaleTimeString("id-ID")}</span>
           )}
         </div>
       </div>

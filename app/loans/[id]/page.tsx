@@ -28,6 +28,7 @@ export default async function LoanDetailPage({
   const summary = buildSummary(loan, entries);
 
   const currentXrpPrice = livePrice?.idr ?? summary.currentXrpPrice;
+  const idrPerUsd = livePrice != null ? livePrice.idr / livePrice.usd : 16000;
 
   const xrpQty =
     entries.length > 0
@@ -97,6 +98,7 @@ export default async function LoanDetailPage({
           roi={summary.roi}
           totalPaidSoFar={summary.totalPaidSoFar}
           initialXrpPrice={currentXrpPrice}
+          idrPerUsd={idrPerUsd}
         />
 
         {/* Break-even */}
