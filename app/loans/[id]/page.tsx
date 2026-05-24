@@ -36,15 +36,8 @@ export default async function LoanDetailPage({
       : Number(loan.xrp_qty);
   const livePortfolioValue = currentXrpPrice != null ? currentXrpPrice * xrpQty : null;
 
-  // Recompute P&L with live price
-  const liveNetPnl =
-    livePortfolioValue != null ? livePortfolioValue - summary.totalPaidSoFar : null;
   const liveNetPosition =
     livePortfolioValue != null ? livePortfolioValue - summary.remainingPrincipal : null;
-  const liveRoi =
-    liveNetPnl != null && summary.totalPaidSoFar > 0
-      ? (liveNetPnl / summary.totalPaidSoFar) * 100
-      : null;
 
   const nextMonth =
     summary.monthsElapsed < loan.term_months ? summary.monthsElapsed + 1 : null;
@@ -108,7 +101,7 @@ export default async function LoanDetailPage({
           </div>
           <div className="grid grid-cols-2 gap-5">
             <Metric label="Nilai Portfolio (live)" value={idr(livePortfolioValue)} color="text-cmc-green" large />
-            <Metric label="Net P&L (live)" value={idr(liveNetPnl, true)} color={pnlColor(liveNetPnl)} sub={pct(liveRoi)} large />
+            <Metric label="Realized P&L" value={idr(summary.realizedPnl, true)} color={pnlColor(summary.realizedPnl)} sub={pct(summary.roi)} large />
             <Metric label="Sisa Hutang" value={idr(summary.remainingPrincipal, true)} color="text-cmc-red" />
             <Metric label="Total Dibayar" value={idr(summary.totalPaidSoFar, true)} color="text-cmc-yellow" />
             <Metric label="Posisi vs Hutang" value={idr(liveNetPosition, true)} color={pnlColor(liveNetPosition)} />

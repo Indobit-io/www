@@ -32,11 +32,11 @@ export interface LoanSummary {
   currentPortfolioValue: number | null;
   currentXrpPrice: number | null;
   netPosition: number | null;       // portfolioValue - remainingPrincipal
-  netPnl: number | null;            // portfolioValue - totalPaidSoFar
+  realizedPnl: number | null;       // Σ monthlyPayment × (xrp_price_m - buy_price) / xrp_price_m
   breakEvenPriceIdr: number | null;
   totalPaidSoFar: number;
   remainingPrincipal: number;
-  roi: number | null;               // netPnl / totalRepayment × 100
+  roi: number | null;               // realizedPnl / totalPaidSoFar × 100
 }
 
 function monthLabel(startDate: string, monthIndex: number): string {
@@ -124,8 +124,22 @@ export function buildSummary(loan: Loan, entries: MonthlyEntry[]): LoanSummary {
 
   const netPosition =
     currentPortfolioValue != null ? currentPortfolioValue - remainingPrincipal : null;
-  const netPnl =
-    currentPortfolioValue != null ? currentPortfolioValue - totalPaidSoFar : null;
+
+  // Realized P&L: each monthly repayment is treated as selling XRP at that month's price.
+  // sell_value_m = monthlyPayment, purchase_value_m = (monthlyPayment / xrp_price_m) × buy_price
+  const realizedPnl =
+    loan.xrp_buy_price_idr != null && entries.length > 0
+      ? entries.reduce((sum, entry) => {
+          const xrpPrice = Number(entry.xrp_price_idr);
+          const purchaseCost = (monthlyPayment / xrpPrice) * Number(loan.xrp_buy_price_idr);
+          return sum + (monthlyPayment - purchaseCost);
+        }, 0)
+      : null;
+
+  const roi =
+    realizedPnl != null && totalPaidSoFar > 0
+      ? (realizedPnl / totalPaidSoFar) * 100
+      : null;
 
   // Break-even = price to cover remaining principal + remaining interest
   const remainingInterest = monthlyInterest * monthsRemaining;
@@ -133,9 +147,6 @@ export function buildSummary(loan: Loan, entries: MonthlyEntry[]): LoanSummary {
     currentXrpQty != null && currentXrpQty > 0
       ? (remainingPrincipal + remainingInterest) / currentXrpQty
       : null;
-
-  const roi =
-    netPnl != null && totalPaidSoFar > 0 ? (netPnl / totalPaidSoFar) * 100 : null;
 
   return {
     totalInterestCost,
@@ -148,7 +159,7 @@ export function buildSummary(loan: Loan, entries: MonthlyEntry[]): LoanSummary {
     currentPortfolioValue,
     currentXrpPrice,
     netPosition,
-    netPnl,
+    realizedPnl,
     breakEvenPriceIdr,
     totalPaidSoFar,
     remainingPrincipal,

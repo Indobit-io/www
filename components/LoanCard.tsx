@@ -10,8 +10,6 @@ interface Props {
 
 export function LoanCard({ loan, summary }: Props) {
   const progressPct = Math.round((summary.monthsElapsed / loan.term_months) * 100);
-  const isPositive = summary.netPnl != null && summary.netPnl >= 0;
-  const isNegative = summary.netPnl != null && summary.netPnl < 0;
 
   return (
     <Link href={`/loans/${loan.id}`}>
@@ -57,9 +55,9 @@ export function LoanCard({ loan, summary }: Props) {
             </div>
           </div>
           <div>
-            <div className="text-xs text-cmc-text-muted mb-0.5">Net P&L</div>
-            <div className={`text-sm font-bold ${pnlColor(summary.netPnl)}`}>
-              {idr(summary.netPnl, true)}
+            <div className="text-xs text-cmc-text-muted mb-0.5">Realized P&L</div>
+            <div className={`text-sm font-bold ${pnlColor(summary.realizedPnl)}`}>
+              {idr(summary.realizedPnl, true)}
             </div>
           </div>
           <div>
