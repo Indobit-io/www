@@ -36,14 +36,15 @@ export default async function LoanDetailPage({
       : Number(loan.xrp_qty);
   const livePortfolioValue = currentXrpPrice != null ? currentXrpPrice * xrpQty : null;
 
-  // Recompute P&L with live price: value - (remainingPrincipal + remainingInterest)
-  const remainingTotal = summary.totalRepayment - summary.totalPaidSoFar;
+  // Recompute P&L with live price
   const liveNetPnl =
-    livePortfolioValue != null ? livePortfolioValue - remainingTotal : null;
+    livePortfolioValue != null ? livePortfolioValue - summary.totalPaidSoFar : null;
   const liveNetPosition =
     livePortfolioValue != null ? livePortfolioValue - summary.remainingPrincipal : null;
   const liveRoi =
-    liveNetPnl != null ? (liveNetPnl / summary.totalRepayment) * 100 : null;
+    liveNetPnl != null && summary.totalPaidSoFar > 0
+      ? (liveNetPnl / summary.totalPaidSoFar) * 100
+      : null;
 
   const nextMonth =
     summary.monthsElapsed < loan.term_months ? summary.monthsElapsed + 1 : null;

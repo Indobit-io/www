@@ -195,10 +195,9 @@ export default function EntryPage({ params }: { params: Promise<{ id: string }> 
               {(() => {
                 const monthlyCapital = Math.round(loan.principal_idr / loan.term_months);
                 const monthlyInterest = Math.round(loan.principal_idr * 0.02);
-                const mn = Number(form.month_number);
-                const remainingPrincipal = Math.max(0, loan.principal_idr - monthlyCapital * mn);
-                const remainingInterest = monthlyInterest * (loan.term_months - mn);
-                const netPnl = portfolioValue - (remainingPrincipal + remainingInterest);
+                const cumulativePaid = (monthlyCapital + monthlyInterest) * Number(form.month_number);
+                const remainingPrincipal = Math.max(0, loan.principal_idr - monthlyCapital * Number(form.month_number));
+                const netPnl = portfolioValue - cumulativePaid;
                 const netPos = portfolioValue - remainingPrincipal;
 
                 return (

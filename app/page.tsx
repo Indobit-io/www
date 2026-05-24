@@ -21,10 +21,10 @@ export default async function HomePage() {
         const xrpQty = Number(loan.xrp_qty);
         summary.currentXrpPrice = livePrice.idr;
         summary.currentPortfolioValue = livePrice.idr * xrpQty;
-        // remainingTotal = totalRepayment - totalPaidSoFar = remainingPrincipal + remainingInterest
-        summary.netPnl = summary.currentPortfolioValue - (summary.totalRepayment - summary.totalPaidSoFar);
+        summary.netPnl = summary.currentPortfolioValue - summary.totalPaidSoFar;
         summary.netPosition = summary.currentPortfolioValue - summary.remainingPrincipal;
-        summary.roi = (summary.netPnl / summary.totalRepayment) * 100;
+        summary.roi = summary.totalPaidSoFar > 0
+          ? (summary.netPnl / summary.totalPaidSoFar) * 100 : null;
       }
       return { loan, summary };
     })
