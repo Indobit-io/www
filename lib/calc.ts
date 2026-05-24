@@ -115,7 +115,7 @@ export function buildSummary(loan: Loan, entries: MonthlyEntry[]): LoanSummary {
 
   const latest = entries.length > 0 ? entries[entries.length - 1] : null;
   const currentXrpPrice = latest ? Number(latest.xrp_price_idr) : null;
-  const currentXrpQty = latest ? Number(latest.xrp_qty_held) : null;
+  const currentXrpQty = latest ? Number(latest.xrp_qty_held) : Number(loan.xrp_qty);
 
   const currentPortfolioValue =
     currentXrpPrice != null && currentXrpQty != null
