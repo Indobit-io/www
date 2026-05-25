@@ -10,7 +10,6 @@ interface Props {
   roi: number | null;
   totalPaidSoFar: number;
   initialXrpPrice: number | null;
-  idrPerUsd: number;
 }
 
 function Metric({ label, value, color, sub, large }: {
@@ -26,7 +25,7 @@ function Metric({ label, value, color, sub, large }: {
 }
 
 export function LiveStatus({
-  xrpQty, remainingPrincipal, realizedPnl, roi, totalPaidSoFar, initialXrpPrice, idrPerUsd,
+  xrpQty, remainingPrincipal, realizedPnl, roi, totalPaidSoFar, initialXrpPrice,
 }: Props) {
   const [xrpPrice, setXrpPrice] = useState<number | null>(initialXrpPrice);
   const [polledAt, setPolledAt] = useState<Date | null>(null);
@@ -35,16 +34,14 @@ export function LiveStatus({
   useEffect(() => {
     async function poll() {
       try {
-        const res = await fetch(
-          "https://api.binance.com/api/v3/ticker/price?symbol=XRPUSDT",
-          { cache: "no-store" }
-        );
+        const res = await fetch("/api/xrp-price", { cache: "no-store" });
         if (!res.ok) throw new Error();
         const data = await res.json();
-        const usdPrice = parseFloat(data.price);
-        setXrpPrice(Math.round(usdPrice * idrPerUsd));
-        setPolledAt(new Date());
-        setError(false);
+        if (typeof data.idr === "number") {
+          setXrpPrice(data.idr);
+          setPolledAt(new Date());
+          setError(false);
+        }
       } catch {
         setError(true);
       }
@@ -53,7 +50,7 @@ export function LiveStatus({
     poll();
     const id = setInterval(poll, 2000);
     return () => clearInterval(id);
-  }, [idrPerUsd]);
+  }, []);
 
   const portfolioValue = xrpPrice != null ? xrpPrice * xrpQty : null;
   const netPosition = portfolioValue != null ? portfolioValue - remainingPrincipal : null;
