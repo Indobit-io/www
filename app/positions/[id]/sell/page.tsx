@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 interface Position {
   id: number;
   name: string;
+  asset: string;
   xrp_qty: number;
   buy_price_idr: number;
   total_batches: number;
@@ -13,8 +14,10 @@ interface Position {
 
 interface Sale {
   batch_number: number;
+  sale_date: string;
   sell_price_idr: number;
   xrp_qty_sold: number;
+  notes: string | null;
 }
 
 export default function SellPage({ params }: { params: Promise<{ id: string }> }) {
@@ -23,9 +26,11 @@ export default function SellPage({ params }: { params: Promise<{ id: string }> }
   const [positionId, setPositionId] = useState<string | null>(null);
   const [position, setPosition] = useState<Position | null>(null);
   const [sales, setSales] = useState<Sale[]>([]);
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "notfound">("loading");
   const [saving, setSaving] = useState(false);
   const [fetchingPrice, setFetchingPrice] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [prefilledBatch, setPrefilledBatch] = useState<number | null>(null);
   const [form, setForm] = useState({
     batch_number: searchParams.get("batch") ?? "1",
     sale_date: new Date().toISOString().slice(0, 10),
@@ -38,18 +43,30 @@ export default function SellPage({ params }: { params: Promise<{ id: string }> }
     params.then(({ id }) => {
       setPositionId(id);
       Promise.all([
-        fetch(`/api/positions/${id}`).then((r) => r.json()),
-        fetch(`/api/positions/${id}/sales`).then((r) => r.json()),
-      ]).then(([pos, salesData]: [Position, Sale[]]) => {
-        setPosition(pos);
-        setSales(salesData);
-      });
+        fetch(`/api/positions/${id}`),
+        fetch(`/api/positions/${id}/sales`),
+      ])
+        .then(async ([posRes, salesRes]) => {
+          if (!posRes.ok || !salesRes.ok) {
+            setLoadState("notfound");
+            return;
+          }
+          const pos: Position = await posRes.json();
+          const salesData: Sale[] = await salesRes.json();
+          setPosition(pos);
+          setSales(salesData);
+          setLoadState("ready");
+        })
+        .catch(() => setLoadState("notfound"));
     });
   }, []);
 
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   const batchNum = Number(form.batch_number || 0);
+  const existingSale = sales.find((s) => s.batch_number === batchNum) ?? null;
+  const isEditing = existingSale != null;
+
   const qtySoldElsewhere = sales
     .filter((s) => s.batch_number !== batchNum)
     .reduce((sum, s) => sum + Number(s.xrp_qty_sold), 0);
@@ -59,19 +76,33 @@ export default function SellPage({ params }: { params: Promise<{ id: string }> }
     : 0;
   const suggestedQty = batchesLeft > 0 ? qtyAvailable / batchesLeft : 0;
 
-  // Prefill qty with the even-split suggestion once data arrives
+  // Prefill: editing an already-sold batch loads its data; a fresh batch
+  // gets the even-split suggested qty.
   useEffect(() => {
-    if (position && !form.xrp_qty_sold && suggestedQty > 0) {
-      setForm((f) =>
-        f.xrp_qty_sold ? f : { ...f, xrp_qty_sold: String(Math.round(suggestedQty * 100) / 100) }
-      );
+    if (!position || prefilledBatch === batchNum) return;
+    setPrefilledBatch(batchNum);
+    if (existingSale) {
+      setForm((f) => ({
+        ...f,
+        sale_date: String(existingSale.sale_date).slice(0, 10),
+        sell_price_idr: String(existingSale.sell_price_idr),
+        xrp_qty_sold: String(existingSale.xrp_qty_sold),
+        notes: existingSale.notes ?? "",
+      }));
+    } else {
+      // Switching to an unsold batch must not carry over another batch's notes
+      setForm((f) => ({
+        ...f,
+        notes: "",
+        xrp_qty_sold: suggestedQty > 0 ? String(Math.round(suggestedQty * 100) / 100) : f.xrp_qty_sold,
+      }));
     }
-  }, [position, sales]);
+  }, [position, sales, batchNum]);
 
   async function fetchPrice() {
     setFetchingPrice(true);
     try {
-      const res = await fetch("/api/xrp-price");
+      const res = await fetch(`/api/price?asset=${position?.asset ?? "XRP"}`);
       const data = await res.json();
       set("sell_price_idr", String(Math.round(data.idr)));
     } catch {
@@ -108,9 +139,36 @@ export default function SellPage({ params }: { params: Promise<{ id: string }> }
     }
   }
 
+  const asset = position?.asset ?? "XRP";
   const sellPrice = Number(form.sell_price_idr.replace(/\D/g, "") || 0);
   const qtySold = Number(form.xrp_qty_sold || 0);
   const proceeds = sellPrice > 0 && qtySold > 0 ? sellPrice * qtySold : null;
+
+  if (loadState === "loading") {
+    return (
+      <main className="min-h-screen bg-cmc-bg text-cmc-text flex items-center justify-center">
+        <div className="flex items-center gap-2 text-sm text-cmc-text-muted">
+          <span className="w-1.5 h-1.5 rounded-full bg-cmc-blue animate-pulse inline-block" />
+          Memuat data posisi…
+        </div>
+      </main>
+    );
+  }
+
+  if (loadState === "notfound") {
+    return (
+      <main className="min-h-screen bg-cmc-bg text-cmc-text flex items-center justify-center px-4">
+        <div className="text-center space-y-3">
+          <div className="text-3xl">🔍</div>
+          <div className="text-sm font-semibold">Posisi tidak ditemukan</div>
+          <p className="text-xs text-cmc-text-muted">Posisi ini mungkin sudah dihapus.</p>
+          <a href="/" className="inline-block text-xs font-semibold px-4 py-2 bg-cmc-blue hover:bg-cmc-blue-dim text-white rounded-lg transition-colors">
+            ← Kembali ke Dashboard
+          </a>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-cmc-bg text-cmc-text">
@@ -124,7 +182,7 @@ export default function SellPage({ params }: { params: Promise<{ id: string }> }
           </a>
           <span className="text-cmc-border">|</span>
           <h1 className="text-sm font-semibold text-cmc-text">
-            Jual Batch {form.batch_number}{position ? ` — ${position.name}` : ""}
+            {isEditing ? "Edit" : "Jual"} Batch {form.batch_number}{position ? ` — ${position.name}` : ""}
           </h1>
         </div>
       </header>
@@ -134,6 +192,12 @@ export default function SellPage({ params }: { params: Promise<{ id: string }> }
           {error && (
             <div className="border border-cmc-red/30 bg-cmc-red/10 text-cmc-red text-sm px-4 py-3 rounded-xl">
               {error}
+            </div>
+          )}
+
+          {isEditing && (
+            <div className="border border-cmc-yellow/30 bg-cmc-yellow/10 text-cmc-yellow text-xs px-4 py-3 rounded-xl">
+              Batch {form.batch_number} sudah pernah dijual — menyimpan akan menimpa data lama.
             </div>
           )}
 
@@ -168,7 +232,7 @@ export default function SellPage({ params }: { params: Promise<{ id: string }> }
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-cmc-text-muted block">Harga Jual XRP/IDR</label>
+              <label className="text-xs font-medium text-cmc-text-muted block">Harga Jual {asset}/IDR</label>
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -191,7 +255,7 @@ export default function SellPage({ params }: { params: Promise<{ id: string }> }
 
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-cmc-text-muted block">
-                Jumlah XRP Dijual
+                Jumlah {asset} Dijual
               </label>
               <input
                 type="number"
@@ -206,7 +270,7 @@ export default function SellPage({ params }: { params: Promise<{ id: string }> }
               />
               {position && (
                 <p className="text-xs text-cmc-text-muted">
-                  Tersedia {qtyAvailable.toLocaleString("id-ID")} XRP · saran {Math.round(suggestedQty).toLocaleString("id-ID")} XRP ({batchesLeft} batch tersisa)
+                  Tersedia {qtyAvailable.toLocaleString("id-ID")} {asset} · saran {Math.round(suggestedQty).toLocaleString("id-ID")} {asset} ({batchesLeft} batch tersisa)
                 </p>
               )}
             </div>
@@ -231,7 +295,7 @@ export default function SellPage({ params }: { params: Promise<{ id: string }> }
                       { label: "Cash Masuk", value: `Rp ${proceeds.toLocaleString("id-ID")}`, color: "text-cmc-yellow" },
                       { label: "Modal Batch Ini", value: `Rp ${Math.round(costBasis).toLocaleString("id-ID")}`, color: "text-cmc-text-secondary" },
                       { label: "P/L Batch", value: `Rp ${Math.round(pnl).toLocaleString("id-ID")} (${pnlPct >= 0 ? "+" : ""}${pnlPct.toFixed(1)}%)`, color: pnl >= 0 ? "text-cmc-green" : "text-cmc-red" },
-                      { label: "Sisa XRP Setelahnya", value: remainingAfter.toLocaleString("id-ID"), color: "text-cmc-text" },
+                      { label: `Sisa ${asset} Setelahnya`, value: remainingAfter.toLocaleString("id-ID"), color: "text-cmc-text" },
                     ].map(({ label, value, color }) => (
                       <div key={label}>
                         <div className="text-xs text-cmc-text-muted mb-0.5">{label}</div>
@@ -260,7 +324,7 @@ export default function SellPage({ params }: { params: Promise<{ id: string }> }
             disabled={saving}
             className="w-full text-sm font-semibold py-3 bg-cmc-blue hover:bg-cmc-blue-dim text-white rounded-xl transition-colors disabled:opacity-50"
           >
-            {saving ? "Menyimpan..." : "Simpan Penjualan"}
+            {saving ? "Menyimpan..." : isEditing ? "Perbarui Penjualan" : "Simpan Penjualan"}
           </button>
         </form>
       </div>

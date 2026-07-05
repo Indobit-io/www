@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getPosition, getSales } from "@/lib/db";
+import { getPosition, getSales, getTargets } from "@/lib/db";
 import { buildBatches, buildSummary } from "@/lib/calc";
-import { fetchXrpPrice } from "@/lib/coingecko";
+import { fetchAssetPrice, isSupportedAsset } from "@/lib/coingecko";
 import { PositionChart } from "@/components/PositionChart";
+import { PriceHistoryChart } from "@/components/PriceHistoryChart";
 import { BatchTable } from "@/components/BatchTable";
 import { LiveStatus } from "@/components/LiveStatus";
 import { DeletePositionButton } from "@/components/DeletePositionButton";
-import { idr, xrp, pct, date } from "@/lib/fmt";
+import { idr, qty, pct, date } from "@/lib/fmt";
 
 export const dynamic = "force-dynamic";
 
@@ -20,23 +21,26 @@ export default async function PositionDetailPage({
   const position = await getPosition(Number(id));
   if (!position) notFound();
 
-  const [sales, livePrice] = await Promise.all([
+  const asset = isSupportedAsset(position.asset) ? position.asset : "XRP";
+
+  const [sales, targets, livePrice] = await Promise.all([
     getSales(position.id),
-    fetchXrpPrice().catch(() => null),
+    getTargets(position.id),
+    fetchAssetPrice(asset).catch(() => null),
   ]);
 
-  const batches = buildBatches(position, sales);
+  const batches = buildBatches(position, sales, targets);
   const summary = buildSummary(position, sales);
 
-  const currentXrpPrice = livePrice?.idr ?? null;
+  const currentPrice = livePrice?.idr ?? null;
 
   const nextBatch = batches.find((b) => b.saleId == null) ?? null;
   const allSold = summary.qtyRemaining <= 0 || nextBatch == null;
 
   const isBelowBreakEven =
-    currentXrpPrice != null &&
+    currentPrice != null &&
     summary.breakEvenPriceIdr != null &&
-    currentXrpPrice < summary.breakEvenPriceIdr;
+    currentPrice < summary.breakEvenPriceIdr;
 
   return (
     <main className="min-h-screen bg-cmc-bg text-cmc-text">
@@ -54,9 +58,15 @@ export default async function PositionDetailPage({
               <div className="hidden sm:flex items-center gap-1.5 text-xs text-cmc-text-muted">
                 <span className="w-1.5 h-1.5 rounded-full bg-cmc-green animate-pulse inline-block" />
                 <span className="font-semibold text-cmc-text">{idr(livePrice.idr)}</span>
-                <span>/ XRP</span>
+                <span>/ {position.asset}</span>
               </div>
             )}
+            <Link
+              href={`/positions/${position.id}/edit`}
+              className="text-xs font-medium px-3 py-2 border border-cmc-border text-cmc-text-secondary hover:text-cmc-text hover:border-cmc-text-muted rounded-lg transition-colors"
+            >
+              Edit
+            </Link>
             {!allSold && nextBatch && (
               <Link
                 href={`/positions/${position.id}/sell?batch=${nextBatch.batchNumber}`}
@@ -74,7 +84,7 @@ export default async function PositionDetailPage({
         {/* Position info strip */}
         <div className="grid grid-cols-3 gap-2">
           {[
-            { label: "Dibeli", value: xrp(position.xrp_qty, 0) },
+            { label: "Dibeli", value: qty(position.xrp_qty, 0, position.asset) },
             { label: "Harga Beli", value: idr(position.buy_price_idr) },
             { label: "Tanggal Beli", value: date(position.start_date) },
           ].map(({ label, value }) => (
@@ -85,14 +95,25 @@ export default async function PositionDetailPage({
           ))}
         </div>
 
+        {/* Position notes */}
+        {position.notes && (
+          <div className="bg-cmc-surface border border-cmc-border rounded-xl px-4 py-3">
+            <div className="text-xs text-cmc-text-muted mb-1">Catatan</div>
+            <p className="text-sm text-cmc-text-secondary leading-relaxed whitespace-pre-wrap">
+              {position.notes}
+            </p>
+          </div>
+        )}
+
         {/* Key metrics — live polling every 2s */}
         <LiveStatus
+          asset={asset}
           qtyRemaining={summary.qtyRemaining}
           cashIdr={summary.cashIdr}
           realizedPnl={summary.realizedPnl}
           purchaseCost={summary.purchaseCost}
           buyPriceIdr={position.buy_price_idr}
-          initialXrpPrice={currentXrpPrice}
+          initialXrpPrice={currentPrice}
         />
 
         {/* Sell progress + break-even */}
@@ -107,14 +128,14 @@ export default async function PositionDetailPage({
             Progress Penjualan
           </div>
           <div className="grid grid-cols-2 gap-5">
-            <Metric label="Harga XRP Saat Ini" value={idr(currentXrpPrice)} color="text-cmc-green" />
+            <Metric label={`Harga ${position.asset} Saat Ini`} value={idr(currentPrice)} color="text-cmc-green" />
             <Metric
-              label="Break-Even Sisa XRP"
+              label={`Break-Even Sisa ${position.asset}`}
               value={summary.breakEvenPriceIdr != null ? idr(summary.breakEvenPriceIdr) : "Modal balik ✓"}
               color={
                 summary.breakEvenPriceIdr == null
                   ? "text-cmc-green"
-                  : currentXrpPrice != null && currentXrpPrice >= summary.breakEvenPriceIdr
+                  : currentPrice != null && currentPrice >= summary.breakEvenPriceIdr
                     ? "text-cmc-green"
                     : "text-cmc-yellow"
               }
@@ -123,13 +144,13 @@ export default async function PositionDetailPage({
               label="Rata-rata Harga Jual"
               value={idr(summary.avgSellPriceIdr)}
               color="text-cmc-yellow"
-              sub={`${xrp(summary.qtySold, 0)} terjual`}
+              sub={`${qty(summary.qtySold, 0, position.asset)} terjual`}
             />
             <Metric
               label="Progress"
               value={`Batch ${summary.batchesSold}/${position.total_batches}`}
               color="text-cmc-text-secondary"
-              sub={`sisa ${xrp(summary.qtyRemaining, 0)}`}
+              sub={`sisa ${qty(summary.qtyRemaining, 0, position.asset)}`}
             />
           </div>
 
@@ -145,18 +166,30 @@ export default async function PositionDetailPage({
             </div>
           </div>
 
-          {summary.breakEvenPriceIdr != null && currentXrpPrice != null && (
+          {summary.breakEvenPriceIdr != null && currentPrice != null && (
             <p className="text-xs text-cmc-text-muted mt-3 leading-relaxed">
-              {currentXrpPrice >= summary.breakEvenPriceIdr
-                ? `✓ Jika sisa XRP dijual di harga sekarang, seluruh modal beli sudah kembali.`
-                : `Sisa XRP perlu dijual rata-rata di ${idr(summary.breakEvenPriceIdr)} (naik ${pct(((summary.breakEvenPriceIdr - currentXrpPrice) / currentXrpPrice) * 100)}) agar modal beli kembali penuh.`}
+              {currentPrice >= summary.breakEvenPriceIdr
+                ? `✓ Jika sisa ${position.asset} dijual di harga sekarang, seluruh modal beli sudah kembali.`
+                : `Sisa ${position.asset} perlu dijual rata-rata di ${idr(summary.breakEvenPriceIdr)} (naik ${pct(((summary.breakEvenPriceIdr - currentPrice) / currentPrice) * 100)}) agar modal beli kembali penuh.`}
             </p>
           )}
           {summary.breakEvenPriceIdr == null && summary.qtySold > 0 && (
             <p className="text-xs text-cmc-text-muted mt-3 leading-relaxed">
-              ✓ Cash dari penjualan sudah menutup seluruh modal beli. Sisa XRP adalah profit murni.
+              ✓ Cash dari penjualan sudah menutup seluruh modal beli. Sisa {position.asset} adalah profit murni.
             </p>
           )}
+        </div>
+
+        {/* Market price history vs buy price / break-even */}
+        <div className="bg-cmc-surface border border-cmc-border rounded-2xl p-5">
+          <div className="text-xs font-semibold uppercase tracking-wide text-cmc-text-muted -mb-6">
+            Riwayat Harga {position.asset}
+          </div>
+          <PriceHistoryChart
+            asset={asset}
+            buyPriceIdr={position.buy_price_idr}
+            breakEvenPriceIdr={summary.breakEvenPriceIdr}
+          />
         </div>
 
         {/* Chart */}
@@ -187,7 +220,12 @@ export default async function PositionDetailPage({
               </Link>
             )}
           </div>
-          <BatchTable rows={batches} positionId={position.id} />
+          <BatchTable
+            rows={batches}
+            positionId={position.id}
+            asset={position.asset}
+            currentPriceIdr={currentPrice}
+          />
         </div>
 
         {/* Position cost summary */}
@@ -203,7 +241,7 @@ export default async function PositionDetailPage({
               value={idr(summary.realizedPnl)}
               color={summary.realizedPnl >= 0 ? "text-cmc-green" : "text-cmc-red"}
             />
-            <Metric label="Harga Beli XRP" value={idr(position.buy_price_idr)} color="text-cmc-text-secondary" />
+            <Metric label={`Harga Beli ${position.asset}`} value={idr(position.buy_price_idr)} color="text-cmc-text-secondary" />
           </div>
         </div>
 

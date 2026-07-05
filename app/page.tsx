@@ -1,22 +1,32 @@
 import Link from "next/link";
 import { getPositions, getSales } from "@/lib/db";
 import { buildSummary, valueAtPrice } from "@/lib/calc";
-import { fetchXrpPrice } from "@/lib/coingecko";
+import { fetchAssetPrice, isSupportedAsset, type AssetPrice } from "@/lib/coingecko";
 import { PositionCard } from "@/components/PositionCard";
+import { LogoutButton } from "@/components/LogoutButton";
 import { idr } from "@/lib/fmt";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [positions, livePrice] = await Promise.all([
-    getPositions(),
-    fetchXrpPrice().catch(() => null),
-  ]);
+  const positions = await getPositions();
+
+  // One price fetch per distinct asset across all positions
+  const assets = [...new Set(positions.map((p) => p.asset).filter(isSupportedAsset))];
+  if (assets.length === 0) assets.push("XRP");
+  const priceList = await Promise.all(
+    assets.map((a) => fetchAssetPrice(a).catch(() => null))
+  );
+  const prices = new Map<string, AssetPrice>();
+  priceList.forEach((p) => p && prices.set(p.asset, p));
+
+  const authEnabled = Boolean(process.env.APP_PASSWORD);
 
   const positionsWithSummary = await Promise.all(
     positions.map(async (position) => {
       const sales = await getSales(position.id);
       const summary = buildSummary(position, sales);
+      const livePrice = prices.get(position.asset) ?? null;
       const live = livePrice
         ? valueAtPrice(summary, position.buy_price_idr, livePrice.idr)
         : null;
@@ -48,12 +58,18 @@ export default async function HomePage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {livePrice && (
-              <div className="hidden sm:flex items-center gap-1.5 text-xs text-cmc-text-muted">
-                <span className="w-1.5 h-1.5 rounded-full bg-cmc-green animate-pulse inline-block" />
-                <span>XRP <span className="text-cmc-text font-semibold">{idr(livePrice.idr)}</span></span>
-              </div>
-            )}
+            <div className="hidden sm:flex items-center gap-3 text-xs text-cmc-text-muted">
+              {assets.map((a) => {
+                const p = prices.get(a);
+                if (!p) return null;
+                return (
+                  <span key={a} className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-cmc-green animate-pulse inline-block" />
+                    <span>{a} <span className="text-cmc-text font-semibold">{idr(p.idr)}</span></span>
+                  </span>
+                );
+              })}
+            </div>
             <Link
               href="/positions/new"
               className="text-xs font-semibold px-4 py-2 bg-cmc-blue hover:bg-cmc-blue-dim text-white rounded-lg transition-colors"
@@ -72,7 +88,7 @@ export default async function HomePage() {
             </div>
             <div className="text-base font-semibold text-cmc-text">Belum ada posisi</div>
             <p className="text-sm text-cmc-text-muted max-w-xs leading-relaxed">
-              Catat pembelian XRP Anda, lalu jual bertahap dalam beberapa batch sambil memantau cash dan P/L.
+              Catat pembelian kripto Anda, lalu jual bertahap dalam beberapa batch sambil memantau cash dan P/L.
             </p>
             <Link
               href="/positions/new"
@@ -106,6 +122,20 @@ export default async function HomePage() {
             </div>
           </div>
         )}
+
+        {/* Footer utilities */}
+        <div className="flex items-center justify-between mt-8 pt-4 border-t border-cmc-border/50 text-xs text-cmc-text-muted">
+          <div className="flex items-center gap-4">
+            <span>Export:</span>
+            <a href="/api/export?format=csv" className="hover:text-cmc-text transition-colors">
+              ⬇ CSV penjualan
+            </a>
+            <a href="/api/export" className="hover:text-cmc-text transition-colors">
+              ⬇ JSON backup
+            </a>
+          </div>
+          {authEnabled && <LogoutButton />}
+        </div>
       </div>
     </main>
   );

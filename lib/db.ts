@@ -37,6 +37,15 @@ async function init() {
       created_at TIMESTAMPTZ DEFAULT NOW(),
       UNIQUE(position_id, batch_number)
     );
+
+    CREATE TABLE IF NOT EXISTS batch_targets (
+      id SERIAL PRIMARY KEY,
+      position_id INTEGER NOT NULL REFERENCES positions(id) ON DELETE CASCADE,
+      batch_number INTEGER NOT NULL,
+      target_price_idr NUMERIC NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(position_id, batch_number)
+    );
   `);
   _initialized = true;
 }
@@ -145,4 +154,71 @@ export async function deleteSale(positionId: number, batchNumber: number): Promi
     "DELETE FROM sales WHERE position_id = $1 AND batch_number = $2",
     [positionId, batchNumber]
   );
+}
+
+export interface BatchTarget {
+  id: number;
+  position_id: number;
+  batch_number: number;
+  target_price_idr: number;
+  created_at: string;
+}
+
+export async function getTargets(positionId: number): Promise<BatchTarget[]> {
+  await init();
+  const r = await pool.query(
+    "SELECT * FROM batch_targets WHERE position_id = $1 ORDER BY batch_number ASC",
+    [positionId]
+  );
+  return r.rows;
+}
+
+export async function upsertTarget(
+  positionId: number,
+  batchNumber: number,
+  targetPriceIdr: number
+): Promise<BatchTarget> {
+  await init();
+  const r = await pool.query(
+    `INSERT INTO batch_targets (position_id, batch_number, target_price_idr)
+     VALUES ($1,$2,$3)
+     ON CONFLICT (position_id, batch_number) DO UPDATE SET
+       target_price_idr = EXCLUDED.target_price_idr
+     RETURNING *`,
+    [positionId, batchNumber, targetPriceIdr]
+  );
+  return r.rows[0];
+}
+
+export async function deleteTarget(positionId: number, batchNumber: number): Promise<void> {
+  await init();
+  await pool.query(
+    "DELETE FROM batch_targets WHERE position_id = $1 AND batch_number = $2",
+    [positionId, batchNumber]
+  );
+}
+
+// Export helpers — everything, joined for the sales ledger
+export type SaleWithPosition = Sale & {
+  position_name: string;
+  asset: string;
+  buy_price_idr: number;
+};
+
+export async function getAllSales(): Promise<SaleWithPosition[]> {
+  await init();
+  const r = await pool.query(
+    `SELECT s.*, p.name AS position_name, p.asset, p.buy_price_idr
+     FROM sales s JOIN positions p ON p.id = s.position_id
+     ORDER BY s.position_id, s.batch_number`
+  );
+  return r.rows;
+}
+
+export async function getAllTargets(): Promise<BatchTarget[]> {
+  await init();
+  const r = await pool.query(
+    "SELECT * FROM batch_targets ORDER BY position_id, batch_number"
+  );
+  return r.rows;
 }

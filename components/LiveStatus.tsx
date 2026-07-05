@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { idr, xrp, pct, pnlColor } from "@/lib/fmt";
+import { idr, qty, pct, pnlColor } from "@/lib/fmt";
 
 interface Props {
+  asset: string;
   qtyRemaining: number;
   cashIdr: number;
   realizedPnl: number;
@@ -25,7 +26,7 @@ function Metric({ label, value, color, sub, large }: {
 }
 
 export function LiveStatus({
-  qtyRemaining, cashIdr, realizedPnl, purchaseCost, buyPriceIdr, initialXrpPrice,
+  asset, qtyRemaining, cashIdr, realizedPnl, purchaseCost, buyPriceIdr, initialXrpPrice,
 }: Props) {
   const [xrpPrice, setXrpPrice] = useState<number | null>(initialXrpPrice);
   const [polledAt, setPolledAt] = useState<Date | null>(null);
@@ -34,7 +35,7 @@ export function LiveStatus({
   useEffect(() => {
     async function poll() {
       try {
-        const res = await fetch("/api/xrp-price", { cache: "no-store" });
+        const res = await fetch(`/api/price?asset=${asset}`, { cache: "no-store" });
         if (!res.ok) throw new Error();
         const data = await res.json();
         if (typeof data.idr === "number") {
@@ -50,7 +51,7 @@ export function LiveStatus({
     poll();
     const id = setInterval(poll, 2000);
     return () => clearInterval(id);
-  }, []);
+  }, [asset]);
 
   const cryptoValue = xrpPrice != null ? xrpPrice * qtyRemaining : null;
   const totalValue = cryptoValue != null ? cashIdr + cryptoValue : null;
@@ -99,7 +100,7 @@ export function LiveStatus({
           label="Unrealized P/L (live)"
           value={idr(unrealizedPnl, true)}
           color={pnlColor(unrealizedPnl)}
-          sub={xrp(qtyRemaining)}
+          sub={qty(qtyRemaining, 4, asset)}
         />
       </div>
     </div>
