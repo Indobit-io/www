@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Crypto Loan Tracker",
-  description: "Monitor kinerja pinjaman untuk beli aset kripto — XRP vs biaya bunga bulanan.",
+  title: "Crypto Sell Tracker",
+  description: "Jual XRP bertahap dalam beberapa batch — pantau cash, sisa kripto, dan P/L.",
 };
 
 export const viewport: Viewport = {

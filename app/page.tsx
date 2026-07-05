@@ -1,30 +1,36 @@
 import Link from "next/link";
-import { getLoans, getEntries } from "@/lib/db";
-import { buildSummary } from "@/lib/calc";
+import { getPositions, getSales } from "@/lib/db";
+import { buildSummary, valueAtPrice } from "@/lib/calc";
 import { fetchXrpPrice } from "@/lib/coingecko";
-import { LoanCard } from "@/components/LoanCard";
+import { PositionCard } from "@/components/PositionCard";
 import { idr } from "@/lib/fmt";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [loans, livePrice] = await Promise.all([
-    getLoans(),
+  const [positions, livePrice] = await Promise.all([
+    getPositions(),
     fetchXrpPrice().catch(() => null),
   ]);
 
-  const loansWithSummary = await Promise.all(
-    loans.map(async (loan) => {
-      const entries = await getEntries(loan.id);
-      const summary = buildSummary(loan, entries);
-      if (livePrice && summary.currentXrpPrice == null) {
-        const xrpQty = Number(loan.xrp_qty);
-        summary.currentXrpPrice = livePrice.idr;
-        summary.currentPortfolioValue = livePrice.idr * xrpQty;
-        summary.netPosition = summary.currentPortfolioValue - summary.remainingPrincipal;
-      }
-      return { loan, summary };
+  const positionsWithSummary = await Promise.all(
+    positions.map(async (position) => {
+      const sales = await getSales(position.id);
+      const summary = buildSummary(position, sales);
+      const live = livePrice
+        ? valueAtPrice(summary, position.buy_price_idr, livePrice.idr)
+        : null;
+      return { position, summary, live };
     })
+  );
+
+  const totals = positionsWithSummary.reduce(
+    (acc, { summary, live }) => ({
+      cost: acc.cost + summary.purchaseCost,
+      cash: acc.cash + summary.cashIdr,
+      value: acc.value + summary.cashIdr + (live?.cryptoValueIdr ?? 0),
+    }),
+    { cost: 0, cash: 0, value: 0 }
   );
 
   return (
@@ -37,8 +43,8 @@ export default async function HomePage() {
               C
             </div>
             <div>
-              <h1 className="text-sm font-bold text-cmc-text">Crypto Loan Tracker</h1>
-              <div className="text-xs text-cmc-text-muted">Monitor kinerja pinjaman kripto</div>
+              <h1 className="text-sm font-bold text-cmc-text">Crypto Sell Tracker</h1>
+              <div className="text-xs text-cmc-text-muted">Jual bertahap, pantau cash & P/L</div>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -49,53 +55,41 @@ export default async function HomePage() {
               </div>
             )}
             <Link
-              href="/loans/new"
+              href="/positions/new"
               className="text-xs font-semibold px-4 py-2 bg-cmc-blue hover:bg-cmc-blue-dim text-white rounded-lg transition-colors"
             >
-              + Pinjaman
+              + Posisi
             </Link>
           </div>
         </div>
       </header>
 
       <div className="max-w-2xl mx-auto px-4 py-6">
-        {loans.length === 0 ? (
+        {positions.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 space-y-4 text-center">
             <div className="w-16 h-16 bg-cmc-surface rounded-2xl flex items-center justify-center text-3xl">
               📊
             </div>
-            <div className="text-base font-semibold text-cmc-text">Belum ada pinjaman</div>
+            <div className="text-base font-semibold text-cmc-text">Belum ada posisi</div>
             <p className="text-sm text-cmc-text-muted max-w-xs leading-relaxed">
-              Tambahkan detail pinjaman Anda untuk mulai melacak kinerja portfolio XRP vs biaya bunga.
+              Catat pembelian XRP Anda, lalu jual bertahap dalam beberapa batch sambil memantau cash dan P/L.
             </p>
             <Link
-              href="/loans/new"
+              href="/positions/new"
               className="text-sm font-semibold px-5 py-2.5 bg-cmc-blue hover:bg-cmc-blue-dim text-white rounded-lg transition-colors"
             >
-              + Tambah Pinjaman Pertama
+              + Tambah Posisi Pertama
             </Link>
           </div>
         ) : (
           <div className="space-y-4">
             {/* Aggregate summary */}
-            {loansWithSummary.length > 1 && (
+            {positionsWithSummary.length > 1 && (
               <div className="bg-cmc-surface border border-cmc-border rounded-2xl p-4 grid grid-cols-3 gap-4">
                 {[
-                  {
-                    label: "Total Pinjaman",
-                    value: idr(loansWithSummary.reduce((s, { loan }) => s + loan.principal_idr, 0), true),
-                    color: "text-cmc-text",
-                  },
-                  {
-                    label: "Total Dibayar",
-                    value: idr(loansWithSummary.reduce((s, { summary }) => s + summary.totalPaidSoFar, 0), true),
-                    color: "text-cmc-yellow",
-                  },
-                  {
-                    label: "Total Nilai",
-                    value: idr(loansWithSummary.reduce((s, { summary }) => s + (summary.currentPortfolioValue ?? 0), 0), true),
-                    color: "text-cmc-green",
-                  },
+                  { label: "Total Modal", value: idr(totals.cost, true), color: "text-cmc-text" },
+                  { label: "Total Cash", value: idr(totals.cash, true), color: "text-cmc-yellow" },
+                  { label: "Total Nilai", value: idr(totals.value, true), color: "text-cmc-green" },
                 ].map(({ label, value, color }) => (
                   <div key={label}>
                     <div className="text-xs text-cmc-text-muted mb-1">{label}</div>
@@ -106,8 +100,8 @@ export default async function HomePage() {
             )}
 
             <div className="space-y-3">
-              {loansWithSummary.map(({ loan, summary }) => (
-                <LoanCard key={loan.id} loan={loan} summary={summary} />
+              {positionsWithSummary.map(({ position, summary, live }) => (
+                <PositionCard key={position.id} position={position} summary={summary} live={live} />
               ))}
             </div>
           </div>
