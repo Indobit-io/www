@@ -6,6 +6,7 @@ import { fetchXrpPrice } from "@/lib/coingecko";
 import { PositionChart } from "@/components/PositionChart";
 import { BatchTable } from "@/components/BatchTable";
 import { LiveStatus } from "@/components/LiveStatus";
+import { DeletePositionButton } from "@/components/DeletePositionButton";
 import { idr, xrp, pct, date } from "@/lib/fmt";
 
 export const dynamic = "force-dynamic";
@@ -204,6 +205,14 @@ export default async function PositionDetailPage({
             />
             <Metric label="Harga Beli XRP" value={idr(position.buy_price_idr)} color="text-cmc-text-secondary" />
           </div>
+        </div>
+
+        {/* Danger zone */}
+        <div className="bg-cmc-surface border border-cmc-red/30 rounded-2xl p-5">
+          <div className="text-xs font-semibold uppercase tracking-wide text-cmc-red mb-4">
+            Zona Berbahaya
+          </div>
+          <DeletePositionButton positionId={position.id} positionName={position.name} />
         </div>
 
       </div>
