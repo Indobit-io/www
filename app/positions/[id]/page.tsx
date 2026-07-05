@@ -1,41 +1,36 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getLoan, getEntries } from "@/lib/db";
-import { buildSchedule, buildSummary } from "@/lib/calc";
+import { getPosition, getSales } from "@/lib/db";
+import { buildBatches, buildSummary } from "@/lib/calc";
 import { fetchXrpPrice } from "@/lib/coingecko";
-import { LoanChart } from "@/components/LoanChart";
-import { MonthlyTable } from "@/components/MonthlyTable";
+import { PositionChart } from "@/components/PositionChart";
+import { BatchTable } from "@/components/BatchTable";
 import { LiveStatus } from "@/components/LiveStatus";
-import { idr, pct, date, pnlColor } from "@/lib/fmt";
+import { idr, xrp, pct, date } from "@/lib/fmt";
 
 export const dynamic = "force-dynamic";
 
-export default async function LoanDetailPage({
+export default async function PositionDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const loan = await getLoan(Number(id));
-  if (!loan) notFound();
+  const position = await getPosition(Number(id));
+  if (!position) notFound();
 
-  const [entries, livePrice] = await Promise.all([
-    getEntries(loan.id),
+  const [sales, livePrice] = await Promise.all([
+    getSales(position.id),
     fetchXrpPrice().catch(() => null),
   ]);
 
-  const schedule = buildSchedule(loan, entries);
-  const summary = buildSummary(loan, entries);
+  const batches = buildBatches(position, sales);
+  const summary = buildSummary(position, sales);
 
-  const currentXrpPrice = livePrice?.idr ?? summary.currentXrpPrice;
+  const currentXrpPrice = livePrice?.idr ?? null;
 
-  const xrpQty =
-    entries.length > 0
-      ? entries[entries.length - 1].xrp_qty_held
-      : loan.xrp_qty;
-
-  const nextMonth =
-    summary.monthsElapsed < loan.term_months ? summary.monthsElapsed + 1 : null;
+  const nextBatch = batches.find((b) => b.saleId == null) ?? null;
+  const allSold = summary.qtyRemaining <= 0 || nextBatch == null;
 
   const isBelowBreakEven =
     currentXrpPrice != null &&
@@ -51,7 +46,7 @@ export default async function LoanDetailPage({
               ← Kembali
             </Link>
             <span className="text-cmc-border">|</span>
-            <h1 className="text-sm font-semibold text-cmc-text truncate">{loan.name}</h1>
+            <h1 className="text-sm font-semibold text-cmc-text truncate">{position.name}</h1>
           </div>
           <div className="flex items-center gap-3 flex-shrink-0">
             {livePrice && (
@@ -61,12 +56,12 @@ export default async function LoanDetailPage({
                 <span>/ XRP</span>
               </div>
             )}
-            {nextMonth && (
+            {!allSold && nextBatch && (
               <Link
-                href={`/loans/${loan.id}/entry?month=${nextMonth}`}
+                href={`/positions/${position.id}/sell?batch=${nextBatch.batchNumber}`}
                 className="text-xs font-semibold px-3 py-2 bg-cmc-blue hover:bg-cmc-blue-dim text-white rounded-lg transition-colors"
               >
-                + Bulan {nextMonth}
+                + Jual Batch {nextBatch.batchNumber}
               </Link>
             )}
           </div>
@@ -75,12 +70,12 @@ export default async function LoanDetailPage({
 
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
 
-        {/* Loan info strip */}
+        {/* Position info strip */}
         <div className="grid grid-cols-3 gap-2">
           {[
-            { label: "Pokok", value: idr(loan.principal_idr, true) },
-            { label: "Tenor", value: `${loan.term_months} bulan` },
-            { label: "Mulai", value: date(loan.start_date) },
+            { label: "Dibeli", value: xrp(position.xrp_qty, 0) },
+            { label: "Harga Beli", value: idr(position.buy_price_idr) },
+            { label: "Tanggal Beli", value: date(position.start_date) },
           ].map(({ label, value }) => (
             <div key={label} className="bg-cmc-surface border border-cmc-border rounded-xl p-3">
               <div className="text-xs text-cmc-text-muted mb-1">{label}</div>
@@ -91,15 +86,15 @@ export default async function LoanDetailPage({
 
         {/* Key metrics — live polling every 2s */}
         <LiveStatus
-          xrpQty={xrpQty}
-          remainingPrincipal={summary.remainingPrincipal}
+          qtyRemaining={summary.qtyRemaining}
+          cashIdr={summary.cashIdr}
           realizedPnl={summary.realizedPnl}
-          roi={summary.roi}
-          totalPaidSoFar={summary.totalPaidSoFar}
+          purchaseCost={summary.purchaseCost}
+          buyPriceIdr={position.buy_price_idr}
           initialXrpPrice={currentXrpPrice}
         />
 
-        {/* Break-even */}
+        {/* Sell progress + break-even */}
         <div
           className="border rounded-2xl p-5"
           style={{
@@ -108,30 +103,32 @@ export default async function LoanDetailPage({
           }}
         >
           <div className="text-xs font-semibold uppercase tracking-wide text-cmc-text-muted mb-4">
-            Break-Even Analysis
+            Progress Penjualan
           </div>
           <div className="grid grid-cols-2 gap-5">
             <Metric label="Harga XRP Saat Ini" value={idr(currentXrpPrice)} color="text-cmc-green" />
             <Metric
-              label="Harga Break-Even"
-              value={idr(summary.breakEvenPriceIdr)}
+              label="Break-Even Sisa XRP"
+              value={summary.breakEvenPriceIdr != null ? idr(summary.breakEvenPriceIdr) : "Modal balik ✓"}
               color={
-                currentXrpPrice != null && summary.breakEvenPriceIdr != null
-                  ? currentXrpPrice >= summary.breakEvenPriceIdr ? "text-cmc-green" : "text-cmc-yellow"
-                  : "text-cmc-text-muted"
+                summary.breakEvenPriceIdr == null
+                  ? "text-cmc-green"
+                  : currentXrpPrice != null && currentXrpPrice >= summary.breakEvenPriceIdr
+                    ? "text-cmc-green"
+                    : "text-cmc-yellow"
               }
             />
             <Metric
-              label="Cicilan/Bulan"
-              value={idr(summary.monthlyPayment, true)}
+              label="Rata-rata Harga Jual"
+              value={idr(summary.avgSellPriceIdr)}
               color="text-cmc-yellow"
-              sub={`pokok ${idr(summary.monthlyCapital, true)} + bunga ${idr(summary.monthlyInterest, true)}`}
+              sub={`${xrp(summary.qtySold, 0)} terjual`}
             />
             <Metric
               label="Progress"
-              value={`Bulan ${summary.monthsElapsed}/${loan.term_months}`}
+              value={`Batch ${summary.batchesSold}/${position.total_batches}`}
               color="text-cmc-text-secondary"
-              sub={`sisa ${summary.monthsRemaining} bulan`}
+              sub={`sisa ${xrp(summary.qtyRemaining, 0)}`}
             />
           </div>
 
@@ -140,18 +137,23 @@ export default async function LoanDetailPage({
               <div
                 className="h-full rounded-full transition-all duration-500"
                 style={{
-                  width: `${(summary.monthsElapsed / loan.term_months) * 100}%`,
+                  width: `${(summary.batchesSold / position.total_batches) * 100}%`,
                   background: isBelowBreakEven ? "#f0b90b" : "#16c784",
                 }}
               />
             </div>
           </div>
 
-          {currentXrpPrice != null && summary.breakEvenPriceIdr != null && (
+          {summary.breakEvenPriceIdr != null && currentXrpPrice != null && (
             <p className="text-xs text-cmc-text-muted mt-3 leading-relaxed">
               {currentXrpPrice >= summary.breakEvenPriceIdr
-                ? `✓ Harga XRP saat ini sudah melewati break-even. Portfolio dapat menutup seluruh sisa kewajiban pinjaman.`
-                : `Butuh kenaikan ${pct(((summary.breakEvenPriceIdr - currentXrpPrice) / currentXrpPrice) * 100)} lagi agar portofolio bisa menutup sisa hutang + bunga.`}
+                ? `✓ Jika sisa XRP dijual di harga sekarang, seluruh modal beli sudah kembali.`
+                : `Sisa XRP perlu dijual rata-rata di ${idr(summary.breakEvenPriceIdr)} (naik ${pct(((summary.breakEvenPriceIdr - currentXrpPrice) / currentXrpPrice) * 100)}) agar modal beli kembali penuh.`}
+            </p>
+          )}
+          {summary.breakEvenPriceIdr == null && summary.qtySold > 0 && (
+            <p className="text-xs text-cmc-text-muted mt-3 leading-relaxed">
+              ✓ Cash dari penjualan sudah menutup seluruh modal beli. Sisa XRP adalah profit murni.
             </p>
           )}
         </div>
@@ -159,44 +161,48 @@ export default async function LoanDetailPage({
         {/* Chart */}
         <div className="bg-cmc-surface border border-cmc-border rounded-2xl p-5">
           <div className="text-xs font-semibold uppercase tracking-wide text-cmc-text-muted mb-4">
-            Grafik Kinerja
+            Grafik Portofolio per Batch
           </div>
-          <LoanChart rows={schedule} principalIdr={loan.principal_idr} />
+          <PositionChart rows={batches} purchaseCost={summary.purchaseCost} />
           <div className="flex gap-5 mt-3 text-xs text-cmc-text-muted">
-            <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-cmc-green inline-block rounded" /> Portfolio</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-cmc-red inline-block rounded" /> Sisa Hutang</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-cmc-yellow inline-block rounded" /> Total Dibayar</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-cmc-blue inline-block rounded" /> Total (cash + kripto)</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-cmc-yellow inline-block rounded" /> Cash</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-cmc-green inline-block rounded" /> Nilai Kripto</span>
           </div>
         </div>
 
-        {/* Monthly table */}
+        {/* Batch table */}
         <div className="bg-cmc-surface border border-cmc-border rounded-2xl p-5">
           <div className="flex items-center justify-between mb-4">
             <div className="text-xs font-semibold uppercase tracking-wide text-cmc-text-muted">
-              Riwayat Bulanan
+              Riwayat Batch Penjualan
             </div>
-            {nextMonth && (
+            {!allSold && nextBatch && (
               <Link
-                href={`/loans/${loan.id}/entry?month=${nextMonth}`}
+                href={`/positions/${position.id}/sell?batch=${nextBatch.batchNumber}`}
                 className="text-xs text-cmc-blue hover:text-blue-400 font-medium transition-colors"
               >
-                + Catat bulan {nextMonth}
+                + Jual batch {nextBatch.batchNumber}
               </Link>
             )}
           </div>
-          <MonthlyTable rows={schedule} loanId={loan.id} />
+          <BatchTable rows={batches} positionId={position.id} />
         </div>
 
-        {/* Loan cost summary */}
+        {/* Position cost summary */}
         <div className="bg-cmc-surface border border-cmc-border rounded-2xl p-5">
           <div className="text-xs font-semibold uppercase tracking-wide text-cmc-text-muted mb-4">
-            Biaya Total Pinjaman
+            Ringkasan Posisi
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Metric label="Pokok Pinjaman" value={idr(loan.principal_idr, true)} color="text-cmc-text-secondary" />
-            <Metric label="Total Bunga (2%×pokok×bulan)" value={idr(summary.totalInterestCost, true)} color="text-cmc-red" />
-            <Metric label="Total Pengembalian" value={idr(summary.totalRepayment, true)} color="text-cmc-yellow" />
-            <Metric label="Harga Beli XRP" value={idr(loan.xrp_buy_price_idr, true)} color="text-cmc-text-secondary" />
+            <Metric label="Modal Beli" value={idr(summary.purchaseCost)} color="text-cmc-text-secondary" />
+            <Metric label="Cash Terkumpul" value={idr(summary.cashIdr)} color="text-cmc-yellow" />
+            <Metric
+              label="Realized P/L"
+              value={idr(summary.realizedPnl)}
+              color={summary.realizedPnl >= 0 ? "text-cmc-green" : "text-cmc-red"}
+            />
+            <Metric label="Harga Beli XRP" value={idr(position.buy_price_idr)} color="text-cmc-text-secondary" />
           </div>
         </div>
 
@@ -206,18 +212,17 @@ export default async function LoanDetailPage({
 }
 
 function Metric({
-  label, value, color, sub, large,
+  label, value, color, sub,
 }: {
   label: string;
   value: string;
   color: string;
   sub?: string;
-  large?: boolean;
 }) {
   return (
     <div>
       <div className="text-xs text-cmc-text-muted mb-1">{label}</div>
-      <div className={`font-bold ${large ? "text-lg" : "text-sm"} ${color}`}>{value}</div>
+      <div className={`font-bold text-sm ${color}`}>{value}</div>
       {sub && <div className="text-xs text-cmc-text-muted mt-0.5">{sub}</div>}
     </div>
   );

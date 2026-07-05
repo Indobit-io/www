@@ -4,11 +4,11 @@ import { useState, useEffect } from "react";
 import { idr, xrp, pct, pnlColor } from "@/lib/fmt";
 
 interface Props {
-  xrpQty: number;
-  remainingPrincipal: number;
-  realizedPnl: number | null;
-  roi: number | null;
-  totalPaidSoFar: number;
+  qtyRemaining: number;
+  cashIdr: number;
+  realizedPnl: number;
+  purchaseCost: number;
+  buyPriceIdr: number;
   initialXrpPrice: number | null;
 }
 
@@ -25,7 +25,7 @@ function Metric({ label, value, color, sub, large }: {
 }
 
 export function LiveStatus({
-  xrpQty, remainingPrincipal, realizedPnl, roi, totalPaidSoFar, initialXrpPrice,
+  qtyRemaining, cashIdr, realizedPnl, purchaseCost, buyPriceIdr, initialXrpPrice,
 }: Props) {
   const [xrpPrice, setXrpPrice] = useState<number | null>(initialXrpPrice);
   const [polledAt, setPolledAt] = useState<Date | null>(null);
@@ -52,8 +52,12 @@ export function LiveStatus({
     return () => clearInterval(id);
   }, []);
 
-  const portfolioValue = xrpPrice != null ? xrpPrice * xrpQty : null;
-  const netPosition = portfolioValue != null ? portfolioValue - remainingPrincipal : null;
+  const cryptoValue = xrpPrice != null ? xrpPrice * qtyRemaining : null;
+  const totalValue = cryptoValue != null ? cashIdr + cryptoValue : null;
+  const unrealizedPnl = xrpPrice != null ? qtyRemaining * (xrpPrice - buyPriceIdr) : null;
+  const totalPnl = unrealizedPnl != null ? realizedPnl + unrealizedPnl : null;
+  const roi =
+    totalPnl != null && purchaseCost > 0 ? (totalPnl / purchaseCost) * 100 : null;
 
   return (
     <div className="bg-cmc-surface border border-cmc-border rounded-2xl p-5">
@@ -70,12 +74,33 @@ export function LiveStatus({
         </div>
       </div>
       <div className="grid grid-cols-2 gap-5">
-        <Metric label="Nilai Portfolio (live)" value={idr(portfolioValue)} color="text-cmc-green" large />
-        <Metric label="Realized P&L" value={idr(realizedPnl, true)} color={pnlColor(realizedPnl)} sub={pct(roi)} large />
-        <Metric label="Sisa Hutang" value={idr(remainingPrincipal, true)} color="text-cmc-red" />
-        <Metric label="Total Dibayar" value={idr(totalPaidSoFar, true)} color="text-cmc-yellow" />
-        <Metric label="Posisi vs Hutang" value={idr(netPosition, true)} color={pnlColor(netPosition)} />
-        <Metric label="XRP Dipegang" value={xrp(xrpQty)} color="text-cmc-text-secondary" />
+        <Metric
+          label="Total Portofolio (live)"
+          value={idr(totalValue)}
+          color="text-cmc-text"
+          sub={`modal ${idr(purchaseCost, true)}`}
+          large
+        />
+        <Metric
+          label="Total P/L (live)"
+          value={idr(totalPnl, true)}
+          color={pnlColor(totalPnl)}
+          sub={pct(roi)}
+          large
+        />
+        <Metric label="Cash (hasil jual)" value={idr(cashIdr, true)} color="text-cmc-yellow" />
+        <Metric label="Nilai Kripto (live)" value={idr(cryptoValue, true)} color="text-cmc-green" />
+        <Metric
+          label="Realized P/L"
+          value={idr(realizedPnl, true)}
+          color={pnlColor(realizedPnl)}
+        />
+        <Metric
+          label="Unrealized P/L (live)"
+          value={idr(unrealizedPnl, true)}
+          color={pnlColor(unrealizedPnl)}
+          sub={xrp(qtyRemaining)}
+        />
       </div>
     </div>
   );
