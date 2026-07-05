@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { idr, xrp, pct, pnlColor } from "@/lib/fmt";
+import { idr, qty, pct, pnlColor } from "@/lib/fmt";
 import type { Position } from "@/lib/db";
 import type { PositionSummary, LiveValuation } from "@/lib/calc";
 
@@ -19,7 +19,7 @@ export function PositionCard({ position, summary, live }: Props) {
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-xs font-medium text-cmc-text-muted mb-1">
-              {position.asset} · {xrp(position.xrp_qty, 0)} @ {idr(position.buy_price_idr)}
+              {qty(position.xrp_qty, 0, position.asset)} @ {idr(position.buy_price_idr)}
             </div>
             <h2 className="text-base font-semibold text-cmc-text group-hover:text-white transition-colors">
               {position.name}
@@ -75,7 +75,7 @@ export function PositionCard({ position, summary, live }: Props) {
         {/* Break-even row */}
         {summary.breakEvenPriceIdr != null && (
           <div className="flex items-center justify-between text-xs pt-3 border-t border-cmc-border">
-            <span className="text-cmc-text-muted">Break-even sisa XRP</span>
+            <span className="text-cmc-text-muted">Break-even sisa {position.asset}</span>
             <span className="font-semibold text-cmc-text-secondary">
               {idr(summary.breakEvenPriceIdr)}
             </span>

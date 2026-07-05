@@ -1,81 +1,132 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { SUPPORTED_ASSETS } from "@/lib/coingecko";
 
-export default function NewPositionPage() {
+interface Position {
+  id: number;
+  name: string;
+  asset: string;
+  xrp_qty: number;
+  buy_price_idr: number;
+  total_batches: number;
+  start_date: string;
+  notes: string | null;
+}
+
+export default function EditPositionPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
+  const [positionId, setPositionId] = useState<string | null>(null);
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "notfound">("loading");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [fetchingPrice, setFetchingPrice] = useState(false);
   const [form, setForm] = useState({
     name: "",
     asset: "XRP",
     xrp_qty: "",
     buy_price_idr: "",
     total_batches: "6",
-    start_date: new Date().toISOString().slice(0, 10),
+    start_date: "",
     notes: "",
   });
 
-  const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  useEffect(() => {
+    params.then(({ id }) => {
+      setPositionId(id);
+      fetch(`/api/positions/${id}`)
+        .then(async (res) => {
+          if (!res.ok) {
+            setLoadState("notfound");
+            return;
+          }
+          const pos: Position = await res.json();
+          setForm({
+            name: pos.name,
+            asset: pos.asset,
+            xrp_qty: String(pos.xrp_qty),
+            buy_price_idr: String(pos.buy_price_idr),
+            total_batches: String(pos.total_batches),
+            start_date: String(pos.start_date).slice(0, 10),
+            notes: pos.notes ?? "",
+          });
+          setLoadState("ready");
+        })
+        .catch(() => setLoadState("notfound"));
+    });
+  }, []);
 
-  async function fetchCurrentPrice() {
-    setFetchingPrice(true);
-    try {
-      const res = await fetch(`/api/price?asset=${form.asset}`);
-      const data = await res.json();
-      set("buy_price_idr", String(Math.round(data.idr)));
-    } catch {
-      setError(`Gagal ambil harga ${form.asset}. Isi manual.`);
-    } finally {
-      setFetchingPrice(false);
-    }
-  }
+  const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!positionId) return;
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch("/api/positions", {
-        method: "POST",
+      const res = await fetch(`/api/positions/${positionId}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...form,
+          name: form.name,
+          asset: form.asset,
           xrp_qty: Number(form.xrp_qty),
           buy_price_idr: Number(form.buy_price_idr.replace(/\D/g, "")),
           total_batches: Number(form.total_batches),
+          start_date: form.start_date,
+          notes: form.notes || null,
         }),
       });
       if (!res.ok) {
         const d = await res.json();
         throw new Error(d.error ?? "Gagal menyimpan");
       }
-      const position = await res.json();
-      router.push(`/positions/${position.id}`);
+      router.push(`/positions/${positionId}`);
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan");
       setSaving(false);
     }
   }
 
-  const qty = Number(form.xrp_qty || 0);
-  const buyPrice = Number(form.buy_price_idr.replace(/\D/g, "") || 0);
-  const batches = Number(form.total_batches || 0);
-  const purchaseCost = qty * buyPrice;
-  const qtyPerBatch = qty > 0 && batches > 0 ? qty / batches : 0;
+  if (loadState === "loading") {
+    return (
+      <main className="min-h-screen bg-cmc-bg text-cmc-text flex items-center justify-center">
+        <div className="flex items-center gap-2 text-sm text-cmc-text-muted">
+          <span className="w-1.5 h-1.5 rounded-full bg-cmc-blue animate-pulse inline-block" />
+          Memuat data posisi…
+        </div>
+      </main>
+    );
+  }
+
+  if (loadState === "notfound") {
+    return (
+      <main className="min-h-screen bg-cmc-bg text-cmc-text flex items-center justify-center px-4">
+        <div className="text-center space-y-3">
+          <div className="text-3xl">🔍</div>
+          <div className="text-sm font-semibold">Posisi tidak ditemukan</div>
+          <p className="text-xs text-cmc-text-muted">Posisi ini mungkin sudah dihapus.</p>
+          <a href="/" className="inline-block text-xs font-semibold px-4 py-2 bg-cmc-blue hover:bg-cmc-blue-dim text-white rounded-lg transition-colors">
+            ← Kembali ke Dashboard
+          </a>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-cmc-bg text-cmc-text">
       <header className="sticky top-0 z-10 border-b border-cmc-border bg-cmc-bg/95 backdrop-blur-sm">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
-          <a href="/" className="text-xs text-cmc-text-muted hover:text-cmc-text transition-colors">
+          <a
+            href={positionId ? `/positions/${positionId}` : "/"}
+            className="text-xs text-cmc-text-muted hover:text-cmc-text transition-colors"
+          >
             ← Kembali
           </a>
           <span className="text-cmc-border">|</span>
-          <h1 className="text-sm font-semibold text-cmc-text">Tambah Posisi Baru</h1>
+          <h1 className="text-sm font-semibold text-cmc-text">Edit Posisi — {form.name}</h1>
         </div>
       </header>
 
@@ -87,20 +138,18 @@ export default function NewPositionPage() {
             </div>
           )}
 
-          {/* Purchase details */}
           <div className="bg-cmc-surface border border-cmc-border rounded-2xl p-5 space-y-4">
             <div className="text-xs font-semibold uppercase tracking-wide text-cmc-text-muted">
               Detail Pembelian
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Nama Posisi" hint="misal: XRP 2026">
+              <Field label="Nama Posisi">
                 <input
                   type="text"
                   required
                   value={form.name}
                   onChange={(e) => set("name", e.target.value)}
-                  placeholder="XRP Batch Jual 2026"
                   className="input-field"
                 />
               </Field>
@@ -126,34 +175,22 @@ export default function NewPositionPage() {
                   required
                   value={form.xrp_qty}
                   onChange={(e) => set("xrp_qty", e.target.value)}
-                  placeholder="5000"
                   className="input-field"
                 />
               </Field>
               <Field label={`Harga Beli ${form.asset} (IDR)`}>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    required
-                    value={form.buy_price_idr}
-                    onChange={(e) => set("buy_price_idr", e.target.value)}
-                    placeholder="10000"
-                    className="input-field flex-1"
-                  />
-                  <button
-                    type="button"
-                    onClick={fetchCurrentPrice}
-                    disabled={fetchingPrice}
-                    className="text-xs font-semibold px-3 bg-cmc-blue/20 border border-cmc-blue/30 text-cmc-blue hover:bg-cmc-blue hover:text-white rounded-lg transition-colors flex-shrink-0"
-                  >
-                    {fetchingPrice ? "..." : "Live"}
-                  </button>
-                </div>
+                <input
+                  type="text"
+                  required
+                  value={form.buy_price_idr}
+                  onChange={(e) => set("buy_price_idr", e.target.value)}
+                  className="input-field"
+                />
               </Field>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <Field label="Jumlah Batch Penjualan" hint="misal: 6">
+              <Field label="Jumlah Batch Penjualan" hint="≥ batch yang sudah terjual">
                 <input
                   type="number"
                   required
@@ -174,46 +211,23 @@ export default function NewPositionPage() {
                 />
               </Field>
             </div>
+
+            <Field label="Catatan (opsional)">
+              <textarea
+                value={form.notes}
+                onChange={(e) => set("notes", e.target.value)}
+                rows={2}
+                className="input-field resize-none"
+              />
+            </Field>
           </div>
-
-          {/* Preview */}
-          {purchaseCost > 0 && (
-            <div className="bg-cmc-surface border border-cmc-blue/20 rounded-2xl p-5">
-              <div className="text-xs font-semibold uppercase tracking-wide text-cmc-blue mb-4">
-                Ringkasan Posisi
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                {[
-                  { label: "Modal beli (qty × harga)", value: `Rp ${purchaseCost.toLocaleString("id-ID")}`, color: "text-cmc-text" },
-                  { label: "Rencana penjualan", value: `${batches} batch`, color: "text-cmc-text-secondary" },
-                  { label: `± ${form.asset} per batch`, value: qtyPerBatch.toLocaleString("id-ID", { maximumFractionDigits: 2 }), color: "text-cmc-yellow" },
-                  { label: "± Modal per batch", value: `Rp ${Math.round(purchaseCost / (batches || 1)).toLocaleString("id-ID")}`, color: "text-cmc-text-secondary" },
-                ].map(({ label, value, color }) => (
-                  <div key={label}>
-                    <div className="text-xs text-cmc-text-muted mb-0.5">{label}</div>
-                    <div className={`text-sm font-bold ${color}`}>{value}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <Field label="Catatan (opsional)">
-            <textarea
-              value={form.notes}
-              onChange={(e) => set("notes", e.target.value)}
-              rows={2}
-              placeholder="Info tambahan tentang posisi ini..."
-              className="input-field resize-none"
-            />
-          </Field>
 
           <button
             type="submit"
             disabled={saving}
             className="w-full text-sm font-semibold py-3 bg-cmc-blue hover:bg-cmc-blue-dim text-white rounded-xl transition-colors disabled:opacity-50"
           >
-            {saving ? "Menyimpan..." : "Simpan Posisi"}
+            {saving ? "Menyimpan..." : "Simpan Perubahan"}
           </button>
         </form>
       </div>

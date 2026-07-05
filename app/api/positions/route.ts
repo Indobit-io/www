@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPositions, createPosition } from "@/lib/db";
+import { isSupportedAsset } from "@/lib/coingecko";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const body = await req.json();
   const {
-    name, xrp_qty, buy_price_idr, total_batches = 6,
+    name, asset = "XRP", xrp_qty, buy_price_idr, total_batches = 6,
     start_date, notes,
   } = body;
 
@@ -21,10 +22,13 @@ export async function POST(req: Request) {
   if (Number(total_batches) < 1) {
     return NextResponse.json({ error: "total_batches must be at least 1" }, { status: 400 });
   }
+  if (!isSupportedAsset(asset)) {
+    return NextResponse.json({ error: `Aset tidak didukung: ${asset}` }, { status: 400 });
+  }
 
   const position = await createPosition({
     name,
-    asset: "XRP",
+    asset,
     xrp_qty: Number(xrp_qty),
     buy_price_idr: Number(buy_price_idr),
     total_batches: Number(total_batches),

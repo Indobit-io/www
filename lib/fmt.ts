@@ -15,13 +15,20 @@ export function idr(value: number | null | undefined, compact = false): string {
   }).format(value);
 }
 
-export function xrp(value: number | null | undefined, decimals = 4): string {
+export function qty(
+  value: number | null | undefined,
+  decimals = 4,
+  symbol = "XRP"
+): string {
   if (value == null) return "—";
   return `${value.toLocaleString("id-ID", {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
-  })} XRP`;
+  })} ${symbol}`;
 }
+
+// Back-compat alias
+export const xrp = qty;
 
 export function pct(value: number | null | undefined, decimals = 2): string {
   if (value == null) return "—";

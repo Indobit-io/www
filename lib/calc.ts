@@ -1,6 +1,6 @@
 // Pure portfolio math — no DB or React imports
 
-import type { Position, Sale } from "./db";
+import type { Position, Sale, BatchTarget } from "./db";
 
 export interface BatchRow {
   batchNumber: number;
@@ -17,6 +17,7 @@ export interface BatchRow {
   cumulativeRealizedPnl: number;    // realized P/L after this batch
   suggestedQty: number | null;      // for unsold batches: remaining / batches left
   notes: string | null;
+  targetPriceIdr: number | null;    // user-set sell target for this batch
 }
 
 export interface PositionSummary {
@@ -34,9 +35,14 @@ export interface PositionSummary {
   breakEvenPriceIdr: number | null;
 }
 
-export function buildBatches(position: Position, sales: Sale[]): BatchRow[] {
+export function buildBatches(
+  position: Position,
+  sales: Sale[],
+  targets: BatchTarget[] = []
+): BatchRow[] {
   const buyPrice = position.buy_price_idr;
   const saleMap = new Map(sales.map((s) => [s.batch_number, s]));
+  const targetMap = new Map(targets.map((t) => [t.batch_number, t.target_price_idr]));
   const rows: BatchRow[] = [];
 
   let qtyRemaining = position.xrp_qty;
@@ -69,6 +75,7 @@ export function buildBatches(position: Position, sales: Sale[]): BatchRow[] {
         cumulativeRealizedPnl: cumulativeRealized,
         suggestedQty: null,
         notes: sale.notes,
+        targetPriceIdr: targetMap.get(b) ?? null,
       });
     } else {
       const batchesLeft = position.total_batches - b + 1;
@@ -87,6 +94,7 @@ export function buildBatches(position: Position, sales: Sale[]): BatchRow[] {
         cumulativeRealizedPnl: cumulativeRealized,
         suggestedQty: batchesLeft > 0 ? qtyRemaining / batchesLeft : null,
         notes: null,
+        targetPriceIdr: targetMap.get(b) ?? null,
       });
     }
   }
