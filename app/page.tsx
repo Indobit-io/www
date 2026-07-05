@@ -71,6 +71,12 @@ export default async function HomePage() {
               })}
             </div>
             <Link
+              href="/analytics"
+              className="text-xs font-medium px-3 py-2 border border-cmc-border text-cmc-text-secondary hover:text-cmc-text hover:border-cmc-text-muted rounded-lg transition-colors"
+            >
+              Analitik
+            </Link>
+            <Link
               href="/positions/new"
               className="text-xs font-semibold px-4 py-2 bg-cmc-blue hover:bg-cmc-blue-dim text-white rounded-lg transition-colors"
             >
