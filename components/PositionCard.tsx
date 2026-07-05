@@ -62,7 +62,9 @@ export function PositionCard({ position, summary, live }: Props) {
             </div>
           </div>
           <div>
-            <div className="text-xs text-cmc-text-muted mb-0.5">Total P/L</div>
+            <div className="text-xs text-cmc-text-muted mb-0.5">
+              {live ? "Total P/L" : "Realized P/L"}
+            </div>
             <div className={`text-sm font-bold ${pnlColor(live?.totalPnl ?? summary.realizedPnl)}`}>
               {live ? idr(live.totalPnl, true) : idr(summary.realizedPnl, true)}
               {live?.roiPct != null && (

@@ -39,6 +39,16 @@ export function buildBatches(position: Position, sales: Sale[]): BatchRow[] {
   const saleMap = new Map(sales.map((s) => [s.batch_number, s]));
   const rows: BatchRow[] = [];
 
+  // Even split for every unsold batch: what's left after ALL recorded sales,
+  // divided across the batches that have no sale yet.
+  const totalSold = sales.reduce((s, sale) => s + sale.xrp_qty_sold, 0);
+  const qtyUnallocated = Math.max(0, position.xrp_qty - totalSold);
+  let unsoldCount = 0;
+  for (let b = 1; b <= position.total_batches; b++) {
+    if (!saleMap.has(b)) unsoldCount++;
+  }
+  const evenSplitQty = unsoldCount > 0 ? qtyUnallocated / unsoldCount : null;
+
   let qtyRemaining = position.xrp_qty;
   let cumulativeCash = 0;
   let cumulativeRealized = 0;
@@ -71,7 +81,6 @@ export function buildBatches(position: Position, sales: Sale[]): BatchRow[] {
         notes: sale.notes,
       });
     } else {
-      const batchesLeft = position.total_batches - b + 1;
       rows.push({
         batchNumber: b,
         saleId: null,
@@ -85,7 +94,7 @@ export function buildBatches(position: Position, sales: Sale[]): BatchRow[] {
         qtyRemainingAfter: qtyRemaining,
         cumulativeCashIdr: cumulativeCash,
         cumulativeRealizedPnl: cumulativeRealized,
-        suggestedQty: batchesLeft > 0 ? qtyRemaining / batchesLeft : null,
+        suggestedQty: evenSplitQty,
         notes: null,
       });
     }

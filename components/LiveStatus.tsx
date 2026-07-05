@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { idr, xrp, pct, pnlColor } from "@/lib/fmt";
+import { useXrpPrice } from "./useXrpPrice";
 
 interface Props {
   qtyRemaining: number;
@@ -27,30 +27,7 @@ function Metric({ label, value, color, sub, large }: {
 export function LiveStatus({
   qtyRemaining, cashIdr, realizedPnl, purchaseCost, buyPriceIdr, initialXrpPrice,
 }: Props) {
-  const [xrpPrice, setXrpPrice] = useState<number | null>(initialXrpPrice);
-  const [polledAt, setPolledAt] = useState<Date | null>(null);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    async function poll() {
-      try {
-        const res = await fetch("/api/xrp-price", { cache: "no-store" });
-        if (!res.ok) throw new Error();
-        const data = await res.json();
-        if (typeof data.idr === "number") {
-          setXrpPrice(data.idr);
-          setPolledAt(new Date());
-          setError(false);
-        }
-      } catch {
-        setError(true);
-      }
-    }
-
-    poll();
-    const id = setInterval(poll, 2000);
-    return () => clearInterval(id);
-  }, []);
+  const { price: xrpPrice, polledAt, error } = useXrpPrice(initialXrpPrice);
 
   const cryptoValue = xrpPrice != null ? xrpPrice * qtyRemaining : null;
   const totalValue = cryptoValue != null ? cashIdr + cryptoValue : null;

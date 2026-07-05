@@ -43,8 +43,11 @@ lib/
   coingecko.ts — price fetch with fallback
   fmt.ts       — idr/xrp/pct/date/pnlColor formatters
 components/
-  PositionCard.tsx  — Dashboard card
-  LiveStatus.tsx    — Polls price every 2s; total value, cash, crypto, P/L
+  useXrpPrice.ts    — Client hook: polls /api/xrp-price every 2s
+  Dashboard.tsx     — Client wrapper: polls price, feeds cards + aggregate totals
+  PositionCard.tsx  — Dashboard card (labels "Realized P/L" when price offline)
+  LiveStatus.tsx    — Total value, cash, crypto, realized/unrealized P/L (live)
+  SellProgress.tsx  — Break-even panel with live current price
   BatchTable.tsx    — Batch-by-batch sell history with running remainder
   PositionChart.tsx — Cash vs crypto vs total per batch (recharts)
 ```

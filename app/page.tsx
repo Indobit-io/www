@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { getPositions, getSales } from "@/lib/db";
-import { buildSummary, valueAtPrice } from "@/lib/calc";
+import { buildSummary } from "@/lib/calc";
 import { fetchXrpPrice } from "@/lib/coingecko";
-import { PositionCard } from "@/components/PositionCard";
+import { Dashboard } from "@/components/Dashboard";
 import { idr } from "@/lib/fmt";
 
 export const dynamic = "force-dynamic";
@@ -13,24 +13,11 @@ export default async function HomePage() {
     fetchXrpPrice().catch(() => null),
   ]);
 
-  const positionsWithSummary = await Promise.all(
+  const items = await Promise.all(
     positions.map(async (position) => {
       const sales = await getSales(position.id);
-      const summary = buildSummary(position, sales);
-      const live = livePrice
-        ? valueAtPrice(summary, position.buy_price_idr, livePrice.idr)
-        : null;
-      return { position, summary, live };
+      return { position, summary: buildSummary(position, sales) };
     })
-  );
-
-  const totals = positionsWithSummary.reduce(
-    (acc, { summary, live }) => ({
-      cost: acc.cost + summary.purchaseCost,
-      cash: acc.cash + summary.cashIdr,
-      value: acc.value + summary.cashIdr + (live?.cryptoValueIdr ?? 0),
-    }),
-    { cost: 0, cash: 0, value: 0 }
   );
 
   return (
@@ -82,29 +69,7 @@ export default async function HomePage() {
             </Link>
           </div>
         ) : (
-          <div className="space-y-4">
-            {/* Aggregate summary */}
-            {positionsWithSummary.length > 1 && (
-              <div className="bg-cmc-surface border border-cmc-border rounded-2xl p-4 grid grid-cols-3 gap-4">
-                {[
-                  { label: "Total Modal", value: idr(totals.cost, true), color: "text-cmc-text" },
-                  { label: "Total Cash", value: idr(totals.cash, true), color: "text-cmc-yellow" },
-                  { label: "Total Nilai", value: idr(totals.value, true), color: "text-cmc-green" },
-                ].map(({ label, value, color }) => (
-                  <div key={label}>
-                    <div className="text-xs text-cmc-text-muted mb-1">{label}</div>
-                    <div className={`text-sm font-bold ${color}`}>{value}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="space-y-3">
-              {positionsWithSummary.map(({ position, summary, live }) => (
-                <PositionCard key={position.id} position={position} summary={summary} live={live} />
-              ))}
-            </div>
-          </div>
+          <Dashboard items={items} initialXrpPrice={livePrice?.idr ?? null} />
         )}
       </div>
     </main>
