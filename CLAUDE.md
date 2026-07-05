@@ -33,6 +33,7 @@ Track a crypto purchase and sell it off in N batches (default 6), watching cash,
 proxy.ts                          — Shared-password auth (APP_PASSWORD); skips /login
 app/
   page.tsx                        — Dashboard: position cards, aggregate totals, export links, logout
+  analytics/page.tsx              — Portfolio analytics: totals, allocation, monthly/cumulative P/L, sale stats
   login/page.tsx                  — Password form (when APP_PASSWORD set)
   positions/new/page.tsx          — Create position (asset, qty, buy price, N batches)
   positions/[id]/page.tsx         — Detail: live status, progress, price history, chart, batch table, danger zone
@@ -51,6 +52,7 @@ app/
 lib/
   db.ts          — pg pool, schema init, Position/Sale/BatchTarget CRUD, export queries
   calc.ts        — buildBatches, buildSummary, valueAtPrice (pure functions)
+  analytics.ts   — buildPortfolioAnalytics: totals, per-asset, monthly, cumulative, sale stats (pure)
   coingecko.ts   — SUPPORTED_ASSETS, price + history fetch with fallback
   price-cache.ts — short-TTL server-side price cache
   fmt.ts         — idr/qty/pct/date/pnlColor formatters (qty takes asset symbol)
@@ -59,6 +61,8 @@ components/
   LiveStatus.tsx        — Polls price every 2s; total value, cash, crypto, P/L
   BatchTable.tsx        — Batch history: inline target editing, edit/delete sold batches, notes
   PositionChart.tsx     — Cash vs crypto vs total per batch (recharts)
+  MonthlyPnlChart.tsx   — Realized P/L per month, green/red by sign (recharts)
+  CumulativePnlChart.tsx — Cumulative cash + realized P/L over time (recharts)
   PriceHistoryChart.tsx — Market price vs buy/break-even lines, 7/30/90d (recharts)
   DeletePositionButton.tsx — Two-step confirm delete
   LogoutButton.tsx      — Clears auth cookie
