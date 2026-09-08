@@ -8,7 +8,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --import ./tests/register.mjs --test \"tests/*.test.ts\"",
-    "test:db": "node --experimental-strip-types --import ./tests/register.mjs --test \"tests/pipeline.test.ts\""
+    "test:db": "node --experimental-strip-types --import ./tests/register.mjs --test-concurrency=1 --test \"tests/pipeline.test.ts\" \"tests/prices.test.ts\""
   },
   "dependencies": {
     "date-fns": "^4.1.0",

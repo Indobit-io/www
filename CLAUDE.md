@@ -33,7 +33,7 @@ Four idempotent jobs, each on its own cron and each runnable by hand from
 | Job | Endpoint | Does |
 |---|---|---|
 | `universe` | `/api/cron/universe` | CoinGecko market-cap ranking → tokens + contracts + decimals |
-| `prices` | `/api/cron/prices` | Hourly price history for tracked tokens |
+| `prices` | `/api/cron/prices` | Hourly price history, budgeted and rotating |
 | `flow` | `/api/cron/flow` | Walk ERC-20 Transfer logs from each token's block cursor |
 | `whales` | `/api/cron/whales` | Recompute the top-N registry from stored flow |
 
@@ -45,6 +45,24 @@ all four in sequence.
 rejects any cron more frequent than daily. That keeps the deploy green but
 starves the ingester — see the deploying section in `README.md` for the real
 schedule and the external-scheduler alternative.
+
+## Why the price sync is budgeted
+CoinGecko's free tier is slow enough that pricing every tracked token in one
+pass does not fit inside a serverless invocation. Left unbounded the function is
+killed by the platform mid-run, which reports as total failure even though most
+of the work landed — and because the old ordering was by market rank, every run
+died on the same head and the tail was never priced at all.
+
+`syncPrices` therefore:
+- runs under a wall-clock deadline derived from the route's `maxDuration`,
+  stopping cleanly and reporting `budgetExhausted` + `remaining`
+- orders by `tokens.last_priced_at` ascending, so each run advances a different
+  slice and repeated runs cover everything
+- fetches only 2 days for a token that already has recent data, reserving the
+  full 30-day backfill for tokens that are new or stale beyond 36h
+- marks a failing coin as attempted, so one broken id cannot block the rotation
+- paces CoinGecko calls through a serialized queue and honours `Retry-After`
+  rather than guessing with a blind retry ladder
 
 ## Data model
 - `tokens` — symbol, CoinGecko id, chain + contract + decimals, market rank,

@@ -8,9 +8,15 @@ const BASE = "https://api.etherscan.io/v2/api";
 const MIN_INTERVAL_MS = Number(process.env.ETHERSCAN_MIN_INTERVAL_MS ?? 220);
 
 export class EtherscanError extends Error {
-  constructor(message: string, readonly retryable = false) {
+  // Declared and assigned explicitly rather than as a constructor parameter
+  // property, which type-stripping runtimes (node --experimental-strip-types)
+  // cannot compile.
+  readonly retryable: boolean;
+
+  constructor(message: string, retryable = false) {
     super(message);
     this.name = "EtherscanError";
+    this.retryable = retryable;
   }
 }
 

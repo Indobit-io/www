@@ -120,38 +120,142 @@ export async function syncUniverse(): Promise<UniverseResult> {
 // --- Prices --------------------------------------------------------------
 
 export interface PriceResult {
+  /** Coins actually refreshed this run. */
   tokens: number;
   points: number;
+  backfilled: number;
+  incremental: number;
+  skippedFresh: number;
+  /** Coins still waiting for their turn when the budget ran out. */
+  remaining: number;
+  budgetExhausted: boolean;
+  ms: number;
   errors: string[];
 }
 
-/** Pulls hourly price history for every tracked token. */
-export async function syncPrices(days = WHALE_WINDOW_DAYS): Promise<PriceResult> {
+/**
+ * Full history is only needed the first time. After that a token just needs the
+ * hours since it was last priced, and CoinGecko's smallest hourly window is
+ * 2 days — a ~40x smaller payload than refetching 30 days every hour.
+ */
+const INCREMENTAL_DAYS = 2;
+
+/** Newer than this and a token is skipped entirely for the run. */
+const FRESH_WITHIN_MS = Number(process.env.PRICE_FRESH_WITHIN_MS ?? 45 * 60 * 1000);
+
+/** Beyond this gap an incremental window would leave a hole, so backfill. */
+const STALE_AFTER_MS = 36 * 60 * 60 * 1000;
+
+/**
+ * Pulls hourly price history for tracked tokens, least-recently-priced first,
+ * under a hard wall-clock budget.
+ *
+ * The budget is the whole point. CoinGecko's free tier is slow enough that
+ * pricing every tracked token in one pass cannot fit inside a serverless
+ * invocation; without a deadline the function is killed by the platform
+ * mid-run, which reports as a total failure even though most of the work
+ * succeeded. Stopping early and saying so is strictly better, and because the
+ * queue rotates on `last_priced_at`, the next run picks up where this one
+ * stopped instead of re-pricing the same head forever.
+ */
+export async function syncPrices(
+  opts: {
+    days?: number;
+    budgetMs?: number;
+    force?: boolean;
+    /** Injection seam so the budget logic can be tested without the network. */
+    fetchChart?: (id: string, days: number, deadline?: number) => Promise<cg.PricePoint[]>;
+  } = {}
+): Promise<PriceResult> {
   await db.init();
-  const tokens = await db.listTokens({ trackedOnly: true });
-  const errors: string[] = [];
-  let points = 0;
+  const startedAt = Date.now();
 
-  // CoinGecko returns hourly granularity for a 2-90 day range; outside it the
-  // series is 5-minutely or daily and the hourly bucketing breaks down.
-  const clamped = Math.min(Math.max(days, 2), 90);
+  const backfillDays = Math.min(Math.max(opts.days ?? WHALE_WINDOW_DAYS, 2), 90);
+  // Callers own the budget: the cron route derives it from the platform's
+  // function timeout. This default only covers direct/script invocations.
+  const budgetMs = opts.budgetMs ?? Number(process.env.PRICE_BUDGET_MS ?? 220_000);
+  const deadline = startedAt + budgetMs;
 
-  // Dedupe: several chains can carry the same CoinGecko coin.
-  const seen = new Set<string>();
+  const fetchChart = opts.fetchChart ?? cg.marketChart;
+  const tokens = await db.tokensByPriceStaleness();
+  const newest = await db.newestPricePointByToken();
 
-  for (const token of tokens) {
-    if (seen.has(token.coingecko_id)) continue;
+  const result: PriceResult = {
+    tokens: 0,
+    points: 0,
+    backfilled: 0,
+    incremental: 0,
+    skippedFresh: 0,
+    remaining: 0,
+    budgetExhausted: false,
+    ms: 0,
+    errors: [],
+  };
+
+  // Several chains can carry the same CoinGecko coin; fetch each coin once and
+  // write the series to every token row that shares it.
+  const byCoin = new Map<string, db.Token[]>();
+  for (const t of tokens) {
+    const list = byCoin.get(t.coingecko_id);
+    if (list) list.push(t);
+    else byCoin.set(t.coingecko_id, [t]);
+  }
+
+  const coins = [...byCoin.entries()];
+  let index = 0;
+
+  for (const [coingeckoId, group] of coins) {
+    index++;
+
+    if (Date.now() >= deadline) {
+      result.budgetExhausted = true;
+      result.remaining = coins.length - index + 1;
+      break;
+    }
+
+    // Freshness is judged on the newest stored point, not on last_priced_at, so
+    // a run that failed after writing still counts as progress.
+    const newestTs = group
+      .map((t) => newest.get(t.id))
+      .filter((d): d is Date => Boolean(d))
+      .sort((a, b) => b.getTime() - a.getTime())[0];
+    const age = newestTs ? Date.now() - newestTs.getTime() : Infinity;
+
+    if (!opts.force && age < FRESH_WITHIN_MS) {
+      result.skippedFresh++;
+      for (const t of group) await db.setTokenPriced(t.id);
+      continue;
+    }
+
+    const needsBackfill = age >= STALE_AFTER_MS;
+    const days = needsBackfill ? backfillDays : INCREMENTAL_DAYS;
+
     try {
-      const series = await cg.marketChart(token.coingecko_id, clamped);
-      const sameCoin = tokens.filter((t) => t.coingecko_id === token.coingecko_id);
-      for (const t of sameCoin) points += await db.upsertPricePoints(t.id, series);
-      seen.add(token.coingecko_id);
+      const series = await fetchChart(coingeckoId, days, deadline);
+      for (const t of group) {
+        result.points += await db.upsertPricePoints(t.id, series);
+        await db.setTokenPriced(t.id);
+      }
+      result.tokens++;
+      if (needsBackfill) result.backfilled++;
+      else result.incremental++;
     } catch (err) {
-      errors.push(`${token.symbol}: ${err instanceof Error ? err.message : String(err)}`);
+      if (err instanceof cg.DeadlineExceeded) {
+        result.budgetExhausted = true;
+        result.remaining = coins.length - index + 1;
+        break;
+      }
+      result.errors.push(
+        `${group[0].symbol}: ${err instanceof Error ? err.message : String(err)}`
+      );
+      // Mark it attempted so one persistently broken coin cannot block the
+      // rotation and starve everything behind it.
+      for (const t of group) await db.setTokenPriced(t.id);
     }
   }
 
-  return { tokens: seen.size, points, errors };
+  result.ms = Date.now() - startedAt;
+  return result;
 }
 
 // --- Flow ingestion ------------------------------------------------------

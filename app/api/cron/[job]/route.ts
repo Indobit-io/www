@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { hasDatabase } from "@/lib/db";
 import { hasEtherscanKey, callsMade } from "@/lib/etherscan";
+import { callsMade as coingeckoCalls } from "@/lib/coingecko";
 import { ingestFlow, refreshWhales, runJob, syncPrices, syncUniverse } from "@/lib/ingest";
 
 export const dynamic = "force-dynamic";
@@ -22,12 +23,30 @@ function authorize(req: NextRequest): boolean {
   return req.nextUrl.searchParams.get("secret") === secret;
 }
 
-async function run(job: Job) {
+/**
+ * Every stage has to finish inside the platform's function timeout. Anything
+ * unbounded gets killed mid-run and reports as a total failure even when most
+ * of the work landed, so the price sync — the only stage whose runtime depends
+ * on a third party's rate limit — is handed an explicit slice of the clock.
+ */
+function priceBudget(startedAt: number, share: number): number {
+  const ceiling = maxDuration * 1000;
+  const spent = Date.now() - startedAt;
+  // Leave headroom so the response itself is never the thing that overruns.
+  const computed = Math.max(15_000, Math.floor((ceiling - spent) * share) - 10_000);
+
+  // PRICE_BUDGET_MS is a ceiling, not a default: the platform limit is the hard
+  // constraint, and an operator lowering this must actually lower it.
+  const override = Number(process.env.PRICE_BUDGET_MS);
+  return Number.isFinite(override) && override > 0 ? Math.min(computed, override) : computed;
+}
+
+async function run(job: Job, startedAt: number) {
   switch (job) {
     case "universe":
       return runJob("universe", syncUniverse);
     case "prices":
-      return runJob("prices", () => syncPrices());
+      return runJob("prices", () => syncPrices({ budgetMs: priceBudget(startedAt, 1) }));
     case "flow":
       return runJob("flow", () => ingestFlow());
     case "whales":
@@ -35,9 +54,11 @@ async function run(job: Job) {
     case "all":
       // Order matters: the universe defines what to price, prices are needed to
       // value transfers, and the whale registry is built from those transfers.
+      // Prices get roughly half of whatever remains after the universe sync,
+      // leaving the flow walk and the registry rebuild room to finish.
       return runJob("all", async () => ({
         universe: await syncUniverse(),
-        prices: await syncPrices(),
+        prices: await syncPrices({ budgetMs: priceBudget(startedAt, 0.5) }),
         flow: await ingestFlow(),
         whales: await refreshWhales(),
       }));
@@ -45,6 +66,7 @@ async function run(job: Job) {
 }
 
 export async function GET(req: NextRequest, ctx: { params: Promise<{ job: string }> }) {
+  const startedAt = Date.now();
   const { job } = await ctx.params;
 
   if (!authorize(req)) {
@@ -67,14 +89,14 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ job: string
     );
   }
 
-  const startedAt = Date.now();
   try {
-    const detail = await run(job as Job);
+    const detail = await run(job as Job, startedAt);
     return NextResponse.json({
       ok: true,
       job,
       ms: Date.now() - startedAt,
       etherscanCalls: callsMade(),
+      coingeckoCalls: coingeckoCalls(),
       detail,
     });
   } catch (err) {

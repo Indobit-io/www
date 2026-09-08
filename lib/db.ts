@@ -41,6 +41,7 @@ async function runInit(): Promise<void> {
       tracked        BOOLEAN NOT NULL DEFAULT TRUE,
       last_block     BIGINT,
       last_ingest_at TIMESTAMPTZ,
+      last_priced_at TIMESTAMPTZ,
       created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE (chain_id, contract)
     );
@@ -101,6 +102,8 @@ async function runInit(): Promise<void> {
       value TEXT NOT NULL
     );
 
+    ALTER TABLE tokens ADD COLUMN IF NOT EXISTS last_priced_at TIMESTAMPTZ;
+
     CREATE INDEX IF NOT EXISTS transfers_token_time ON transfers (token_id, block_time DESC);
     CREATE INDEX IF NOT EXISTS transfers_time       ON transfers (block_time DESC);
     CREATE INDEX IF NOT EXISTS transfers_from       ON transfers (from_addr, block_time DESC);
@@ -145,6 +148,7 @@ export interface Token {
   tracked: boolean;
   last_block: number | null;
   last_ingest_at: string | null;
+  last_priced_at: string | null;
 }
 
 export type WhaleKind = "unknown" | "hub" | "contract" | "wallet";
@@ -258,6 +262,31 @@ export async function retrackTopTokens(limit: number): Promise<number> {
     [limit]
   );
   return rowCount ?? 0;
+}
+
+/**
+ * Tracked tokens ordered least-recently-priced first. The price sync runs under
+ * a wall-clock budget, so a fixed order would price the same head every run and
+ * starve the tail forever; rotating means every token gets its turn.
+ */
+export async function tokensByPriceStaleness(): Promise<Token[]> {
+  const { rows } = await pool.query<Token>(
+    `SELECT * FROM tokens WHERE tracked
+     ORDER BY last_priced_at ASC NULLS FIRST, market_rank NULLS LAST`
+  );
+  return rows;
+}
+
+export async function setTokenPriced(id: number): Promise<void> {
+  await pool.query(`UPDATE tokens SET last_priced_at = NOW() WHERE id = $1`, [id]);
+}
+
+/** Newest stored price point per token, in one query rather than N. */
+export async function newestPricePointByToken(): Promise<Map<number, Date>> {
+  const { rows } = await pool.query<{ token_id: number; newest: string }>(
+    `SELECT token_id, MAX(ts) AS newest FROM price_points GROUP BY token_id`
+  );
+  return new Map(rows.map((r) => [r.token_id, new Date(r.newest)]));
 }
 
 // --- Transfers -----------------------------------------------------------
