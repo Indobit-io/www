@@ -1,107 +1,115 @@
-// Live prices with CoinGecko primary + Binance+FX fallback, multi-asset.
+// CoinGecko: the token universe (which tokens exist, their contract address on
+// each chain, market cap ranking) and the price series the correlation runs
+// against. Works keyless on the public tier; COINGECKO_API_KEY raises limits.
 
-export interface AssetPrice {
-  asset: AssetSymbol;
-  idr: number;
-  usd: number;
-  fetched_at: string;
+const PUBLIC_BASE = "https://api.coingecko.com/api/v3";
+const PRO_BASE = "https://pro-api.coingecko.com/api/v3";
+
+function base(): string {
+  return process.env.COINGECKO_PRO === "1" ? PRO_BASE : PUBLIC_BASE;
 }
 
-export const SUPPORTED_ASSETS = {
-  XRP: { label: "XRP (Ripple)", coingeckoId: "ripple", binanceSymbol: "XRPUSDT" },
-  BTC: { label: "BTC (Bitcoin)", coingeckoId: "bitcoin", binanceSymbol: "BTCUSDT" },
-  ETH: { label: "ETH (Ethereum)", coingeckoId: "ethereum", binanceSymbol: "ETHUSDT" },
-  SOL: { label: "SOL (Solana)", coingeckoId: "solana", binanceSymbol: "SOLUSDT" },
-  BNB: { label: "BNB", coingeckoId: "binancecoin", binanceSymbol: "BNBUSDT" },
-  ADA: { label: "ADA (Cardano)", coingeckoId: "cardano", binanceSymbol: "ADAUSDT" },
-  DOGE: { label: "DOGE (Dogecoin)", coingeckoId: "dogecoin", binanceSymbol: "DOGEUSDT" },
-} as const;
-
-export type AssetSymbol = keyof typeof SUPPORTED_ASSETS;
-
-export function isSupportedAsset(asset: string): asset is AssetSymbol {
-  return asset in SUPPORTED_ASSETS;
-}
-
-function coingeckoHeaders(): Record<string, string> {
-  const headers: Record<string, string> = { accept: "application/json" };
-  if (process.env.COINGECKO_API_KEY) {
-    headers["x-cg-demo-api-key"] = process.env.COINGECKO_API_KEY;
+function headers(): Record<string, string> {
+  const h: Record<string, string> = { accept: "application/json" };
+  const key = process.env.COINGECKO_API_KEY;
+  if (key) {
+    h[process.env.COINGECKO_PRO === "1" ? "x-cg-pro-api-key" : "x-cg-demo-api-key"] = key;
   }
-  return headers;
+  return h;
 }
 
-async function fetchFromCoinGecko(asset: AssetSymbol): Promise<{ idr: number; usd: number }> {
-  const { coingeckoId } = SUPPORTED_ASSETS[asset];
-  const res = await fetch(
-    `https://api.coingecko.com/api/v3/simple/price?ids=${coingeckoId}&vs_currencies=idr,usd`,
-    { headers: coingeckoHeaders(), cache: "no-store" }
+async function get<T>(path: string, params: Record<string, string | number> = {}): Promise<T> {
+  const qs = new URLSearchParams(
+    Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)]))
   );
-  if (!res.ok) throw new Error(`CoinGecko ${res.status}`);
-  const data = await res.json();
-  const row = data[coingeckoId];
-  if (!row?.idr || !row?.usd) throw new Error("CoinGecko: empty response");
-  return { idr: row.idr, usd: row.usd };
-}
+  const url = `${base()}${path}${qs.toString() ? `?${qs}` : ""}`;
 
-async function fetchFromBinance(asset: AssetSymbol): Promise<{ idr: number; usd: number }> {
-  // Get ASSET/USDT from Binance, then USD/IDR from exchangerate-api
-  const { binanceSymbol } = SUPPORTED_ASSETS[asset];
-  const [tickerRes, fxRes] = await Promise.all([
-    fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${binanceSymbol}`, { cache: "no-store" }),
-    fetch("https://open.er-api.com/v6/latest/USD", { cache: "no-store" }),
-  ]);
-  if (!tickerRes.ok) throw new Error(`Binance ${tickerRes.status}`);
-  if (!fxRes.ok) throw new Error(`FX rate ${fxRes.status}`);
-
-  const tickerData = await tickerRes.json();
-  const fxData = await fxRes.json();
-  const usd = parseFloat(tickerData.price);
-  const idrPerUsd = fxData.rates?.IDR ?? 16000;
-  return { usd, idr: Math.round(usd * idrPerUsd) };
-}
-
-export async function fetchAssetPrice(asset: AssetSymbol): Promise<AssetPrice> {
-  let last: Error | null = null;
-
-  for (const fn of [fetchFromCoinGecko, fetchFromBinance]) {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 4; attempt++) {
     try {
-      const { idr, usd } = await fn(asset);
-      return { asset, idr, usd, fetched_at: new Date().toISOString() };
-    } catch (e) {
-      last = e instanceof Error ? e : new Error(String(e));
+      const res = await fetch(url, { headers: headers(), cache: "no-store" });
+      if (res.status === 429) throw new Error("CoinGecko rate limited (429)");
+      if (!res.ok) throw new Error(`CoinGecko HTTP ${res.status} on ${path}`);
+      return (await res.json()) as T;
+    } catch (err) {
+      lastErr = err;
+      // Public tier is ~10-30 calls/min; back off generously.
+      await new Promise((r) => setTimeout(r, 1500 * 2 ** attempt));
     }
   }
-
-  throw last ?? new Error("All price sources failed");
+  throw lastErr instanceof Error ? lastErr : new Error("CoinGecko request failed");
 }
 
-// Back-compat alias for the original XRP-only API
-export type XrpPrice = AssetPrice;
-export const fetchXrpPrice = () => fetchAssetPrice("XRP");
+export interface MarketCoin {
+  id: string;
+  symbol: string;
+  name: string;
+  current_price: number | null;
+  market_cap: number | null;
+  market_cap_rank: number | null;
+  total_volume: number | null;
+  price_change_percentage_24h: number | null;
+}
+
+/** Top coins by market cap. `perPage` maxes out at 250 per call. */
+export async function topMarkets(perPage = 250, page = 1): Promise<MarketCoin[]> {
+  return get<MarketCoin[]>("/coins/markets", {
+    vs_currency: "usd",
+    order: "market_cap_desc",
+    per_page: perPage,
+    page,
+    sparkline: "false",
+    price_change_percentage: "24h",
+  });
+}
+
+export interface CoinListEntry {
+  id: string;
+  symbol: string;
+  name: string;
+  platforms: Record<string, string | null>;
+}
+
+/**
+ * Every coin with its contract address per chain. One call, a few MB — this is
+ * how contract addresses get resolved instead of being hardcoded.
+ */
+export async function coinListWithPlatforms(): Promise<CoinListEntry[]> {
+  return get<CoinListEntry[]>("/coins/list", { include_platform: "true" });
+}
 
 export interface PricePoint {
-  t: number; // unix ms
-  price: number; // IDR
+  ts: Date;
+  price: number;
 }
 
-// Historical prices from CoinGecko market_chart (no Binance fallback — history
-// is a nice-to-have, callers must tolerate failure).
-export async function fetchPriceHistory(asset: AssetSymbol, days: number): Promise<PricePoint[]> {
-  const { coingeckoId } = SUPPORTED_ASSETS[asset];
-  const res = await fetch(
-    `https://api.coingecko.com/api/v3/coins/${coingeckoId}/market_chart?vs_currency=idr&days=${days}`,
-    { headers: coingeckoHeaders(), cache: "no-store" }
-  );
-  if (!res.ok) throw new Error(`CoinGecko ${res.status}`);
-  const data = await res.json();
-  const prices: [number, number][] = data.prices ?? [];
+/**
+ * Historical prices. CoinGecko picks granularity from the range: 1 day gives
+ * ~5-minute points, 2-90 days gives hourly, beyond that daily. The correlation
+ * buckets hourly, so keep `days` in the 2-90 window.
+ */
+export async function marketChart(coingeckoId: string, days: number): Promise<PricePoint[]> {
+  const data = await get<{ prices: [number, number][] }>(`/coins/${coingeckoId}/market_chart`, {
+    vs_currency: "usd",
+    days,
+  });
+  return (data.prices ?? []).map(([ms, price]) => ({ ts: new Date(ms), price }));
+}
 
-  // Downsample to ≤ ~300 points so the client payload stays small
-  const maxPoints = 300;
-  const step = Math.max(1, Math.ceil(prices.length / maxPoints));
-  const points = prices
-    .filter((_, i) => i % step === 0 || i === prices.length - 1)
-    .map(([t, price]) => ({ t, price }));
-  return points;
+/** Spot prices for many coins in one call. */
+export async function simplePrices(ids: string[]): Promise<Record<string, number>> {
+  if (!ids.length) return {};
+  const out: Record<string, number> = {};
+  // The URL has a practical length limit; chunk the id list.
+  for (let i = 0; i < ids.length; i += 150) {
+    const chunk = ids.slice(i, i + 150);
+    const data = await get<Record<string, { usd?: number }>>("/simple/price", {
+      ids: chunk.join(","),
+      vs_currencies: "usd",
+    });
+    for (const [id, row] of Object.entries(data)) {
+      if (typeof row.usd === "number") out[id] = row.usd;
+    }
+  }
+  return out;
 }

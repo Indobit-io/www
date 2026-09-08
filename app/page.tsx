@@ -1,148 +1,160 @@
 import Link from "next/link";
-import { getPositions, getSales } from "@/lib/db";
-import { buildSummary, valueAtPrice } from "@/lib/calc";
-import { fetchAssetPrice, isSupportedAsset, type AssetPrice } from "@/lib/coingecko";
-import { PositionCard } from "@/components/PositionCard";
-import { LogoutButton } from "@/components/LogoutButton";
-import { idr } from "@/lib/fmt";
+import { movers } from "@/lib/analysis";
+import { hasDatabase, pipelineStats } from "@/lib/db";
+import { hasEtherscanKey } from "@/lib/etherscan";
+import { MIN_TRANSFER_USD } from "@/lib/ingest";
+import { num, pct, signColor, usd } from "@/lib/fmt";
+import SetupNotice from "@/components/SetupNotice";
+import Stat from "@/components/Stat";
 
 export const dynamic = "force-dynamic";
 
-export default async function HomePage() {
-  const positions = await getPositions();
+const WINDOWS = [
+  { hours: 6, label: "6h" },
+  { hours: 24, label: "24h" },
+  { hours: 72, label: "3d" },
+  { hours: 168, label: "7d" },
+];
 
-  // One price fetch per distinct asset across all positions
-  const assets = [...new Set(positions.map((p) => p.asset).filter(isSupportedAsset))];
-  if (assets.length === 0) assets.push("XRP");
-  const priceList = await Promise.all(
-    assets.map((a) => fetchAssetPrice(a).catch(() => null))
-  );
-  const prices = new Map<string, AssetPrice>();
-  priceList.forEach((p) => p && prices.set(p.asset, p));
+function zBadge(z: number) {
+  if (z >= 3) return { text: "extreme", cls: "border-cmc-red/50 text-cmc-red" };
+  if (z >= 2) return { text: "unusual", cls: "border-cmc-yellow/50 text-cmc-yellow" };
+  if (z >= 1) return { text: "elevated", cls: "border-cmc-blue/50 text-cmc-blue" };
+  return null;
+}
 
-  const authEnabled = Boolean(process.env.APP_PASSWORD);
+export default async function MoversPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ hours?: string }>;
+}) {
+  const sp = await searchParams;
+  const hours = WINDOWS.some((w) => String(w.hours) === sp.hours) ? Number(sp.hours) : 24;
 
-  const positionsWithSummary = await Promise.all(
-    positions.map(async (position) => {
-      const sales = await getSales(position.id);
-      const summary = buildSummary(position, sales);
-      const livePrice = prices.get(position.asset) ?? null;
-      const live = livePrice
-        ? valueAtPrice(summary, position.buy_price_idr, livePrice.idr)
-        : null;
-      return { position, summary, live };
-    })
-  );
+  if (!hasDatabase()) {
+    return <SetupNotice missing={{ database: true, etherscan: !hasEtherscanKey(), noData: true }} />;
+  }
 
-  const totals = positionsWithSummary.reduce(
-    (acc, { summary, live }) => ({
-      cost: acc.cost + summary.purchaseCost,
-      cash: acc.cash + summary.cashIdr,
-      value: acc.value + summary.cashIdr + (live?.cryptoValueIdr ?? 0),
-    }),
-    { cost: 0, cash: 0, value: 0 }
-  );
+  const [rows, stats] = await Promise.all([movers({ hours, limit: 60 }), pipelineStats()]);
+
+  if (!rows.length) {
+    return (
+      <SetupNotice
+        missing={{ database: false, etherscan: !hasEtherscanKey(), noData: true }}
+      />
+    );
+  }
+
+  const grossTotal = rows.reduce((a, r) => a + r.gross_usd, 0);
+  const netTotal = rows.reduce((a, r) => a + r.net_usd, 0);
+  const transfers = rows.reduce((a, r) => a + r.transfers, 0);
 
   return (
-    <main className="min-h-screen bg-cmc-bg text-cmc-text">
-      {/* Header */}
-      <header className="sticky top-0 z-10 border-b border-cmc-border bg-cmc-bg/95 backdrop-blur-sm">
-        <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-cmc-blue rounded-lg flex items-center justify-center text-white text-sm font-bold">
-              C
-            </div>
-            <div>
-              <h1 className="text-sm font-bold text-cmc-text">Crypto Sell Tracker</h1>
-              <div className="text-xs text-cmc-text-muted">Jual bertahap, pantau cash & P/L</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-3 text-xs text-cmc-text-muted">
-              {assets.map((a) => {
-                const p = prices.get(a);
-                if (!p) return null;
-                return (
-                  <span key={a} className="flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-cmc-green animate-pulse inline-block" />
-                    <span>{a} <span className="text-cmc-text font-semibold">{idr(p.idr)}</span></span>
-                  </span>
-                );
-              })}
-            </div>
-            <Link
-              href="/analytics"
-              className="text-xs font-medium px-3 py-2 border border-cmc-border text-cmc-text-secondary hover:text-cmc-text hover:border-cmc-text-muted rounded-lg transition-colors"
-            >
-              Analitik
-            </Link>
-            <Link
-              href="/positions/new"
-              className="text-xs font-semibold px-4 py-2 bg-cmc-blue hover:bg-cmc-blue-dim text-white rounded-lg transition-colors"
-            >
-              + Posisi
-            </Link>
-          </div>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Tokens whales are moving</h1>
+          <p className="mt-1 text-[13px] text-cmc-text-secondary">
+            Transfers of {usd(MIN_TRANSFER_USD)} or more touching one of the top{" "}
+            {num(stats.whales)} addresses by volume moved.
+          </p>
         </div>
-      </header>
-
-      <div className="max-w-2xl mx-auto px-4 py-6">
-        {positions.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 space-y-4 text-center">
-            <div className="w-16 h-16 bg-cmc-surface rounded-2xl flex items-center justify-center text-3xl">
-              📊
-            </div>
-            <div className="text-base font-semibold text-cmc-text">Belum ada posisi</div>
-            <p className="text-sm text-cmc-text-muted max-w-xs leading-relaxed">
-              Catat pembelian kripto Anda, lalu jual bertahap dalam beberapa batch sambil memantau cash dan P/L.
-            </p>
+        <div className="flex gap-1">
+          {WINDOWS.map((w) => (
             <Link
-              href="/positions/new"
-              className="text-sm font-semibold px-5 py-2.5 bg-cmc-blue hover:bg-cmc-blue-dim text-white rounded-lg transition-colors"
+              key={w.hours}
+              href={`/?hours=${w.hours}`}
+              className={`rounded-lg border px-3 py-1.5 text-[12px] transition-colors ${
+                w.hours === hours
+                  ? "border-cmc-blue bg-cmc-blue/10 text-cmc-text"
+                  : "border-cmc-border text-cmc-text-secondary hover:text-cmc-text"
+              }`}
             >
-              + Tambah Posisi Pertama
+              {w.label}
             </Link>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {/* Aggregate summary */}
-            {positionsWithSummary.length > 1 && (
-              <div className="bg-cmc-surface border border-cmc-border rounded-2xl p-4 grid grid-cols-3 gap-4">
-                {[
-                  { label: "Total Modal", value: idr(totals.cost, true), color: "text-cmc-text" },
-                  { label: "Total Cash", value: idr(totals.cash, true), color: "text-cmc-yellow" },
-                  { label: "Total Nilai", value: idr(totals.value, true), color: "text-cmc-green" },
-                ].map(({ label, value, color }) => (
-                  <div key={label}>
-                    <div className="text-xs text-cmc-text-muted mb-1">{label}</div>
-                    <div className={`text-sm font-bold ${color}`}>{value}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="space-y-3">
-              {positionsWithSummary.map(({ position, summary, live }) => (
-                <PositionCard key={position.id} position={position} summary={summary} live={live} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Footer utilities */}
-        <div className="flex items-center justify-between mt-8 pt-4 border-t border-cmc-border/50 text-xs text-cmc-text-muted">
-          <div className="flex items-center gap-4">
-            <span>Export:</span>
-            <a href="/api/export?format=csv" className="hover:text-cmc-text transition-colors">
-              ⬇ CSV penjualan
-            </a>
-            <a href="/api/export" className="hover:text-cmc-text transition-colors">
-              ⬇ JSON backup
-            </a>
-          </div>
-          {authEnabled && <LogoutButton />}
+          ))}
         </div>
       </div>
-    </main>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat label={`Whale volume · ${hours}h`} value={usd(grossTotal)} sub={`${num(transfers)} transfers`} />
+        <Stat
+          label="Net accumulation"
+          value={usd(netTotal, { sign: true })}
+          valueClass={signColor(netTotal)}
+          sub={netTotal >= 0 ? "whales received more than they sent" : "whales sent more than they received"}
+        />
+        <Stat label="Tokens active" value={num(rows.length)} sub={`of ${num(stats.tracked_tokens)} indexed`} />
+        <Stat label="Whales tracked" value={num(stats.whales)} sub={`${num(stats.transfers)} transfers stored`} />
+      </div>
+
+      <div className="card scroll-x">
+        <table className="tbl">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Token</th>
+              <th className="num">Whale volume</th>
+              <th className="num">Net flow</th>
+              <th className="num">vs baseline</th>
+              <th className="num">Whales</th>
+              <th className="num">Transfers</th>
+              <th className="num">Price 24h</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((m, i) => {
+              const badge = zBadge(m.volume_z);
+              return (
+                <tr key={m.token_id}>
+                  <td className="num text-cmc-text-muted">{i + 1}</td>
+                  <td>
+                    <Link href={`/tokens/${m.symbol}`} className="flex items-center gap-2 hover:underline">
+                      <span className="font-medium">{m.symbol}</span>
+                      <span className="hidden text-cmc-text-muted sm:inline">{m.name}</span>
+                    </Link>
+                  </td>
+                  <td className="num mono">{usd(m.gross_usd)}</td>
+                  <td className={`num mono ${signColor(m.net_usd)}`}>
+                    {usd(m.net_usd, { sign: true })}
+                  </td>
+                  <td className="num mono">
+                    {m.baseline_days >= 3 ? (
+                      <span className="text-cmc-text-secondary">
+                        {m.volume_z > 0 ? "+" : ""}
+                        {m.volume_z.toFixed(1)}σ
+                      </span>
+                    ) : (
+                      <span className="text-cmc-text-muted" title="Needs 3+ days of history">
+                        —
+                      </span>
+                    )}
+                  </td>
+                  <td className="num mono">{num(m.whales)}</td>
+                  <td className="num mono">{num(m.transfers)}</td>
+                  <td className={`num mono ${signColor(m.price_change_24h)}`}>
+                    {pct(m.price_change_24h)}
+                  </td>
+                  <td>
+                    {badge ? (
+                      <span className={`chip ${badge.cls}`}>{badge.text}</span>
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="text-[12px] leading-relaxed text-cmc-text-muted">
+        Net flow is whale inflow minus outflow, so a positive number means the tracked set received
+        more than it sent. It is not a buy/sell signal: an address moving between its own wallets,
+        or into an exchange it controls, produces flow with no trade behind it. &ldquo;vs
+        baseline&rdquo; scales the window to a daily rate and compares it with the token&rsquo;s own
+        30-day daily mean, so a normally quiet token waking up ranks above one that is always busy.
+      </p>
+    </div>
   );
 }

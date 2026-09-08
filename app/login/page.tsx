@@ -21,13 +21,13 @@ export default function LoginPage() {
       });
       if (!res.ok) {
         const d = await res.json();
-        throw new Error(d.error ?? "Gagal masuk");
+        throw new Error(d.error ?? "Sign-in failed");
       }
       const next = new URLSearchParams(window.location.search).get("next") ?? "/";
       router.push(next.startsWith("/") ? next : "/");
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Terjadi kesalahan");
+      setError(err instanceof Error ? err.message : "Something went wrong");
       setSubmitting(false);
     }
   }
@@ -36,11 +36,11 @@ export default function LoginPage() {
     <main className="min-h-screen bg-cmc-bg text-cmc-text flex items-center justify-center px-4">
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center space-y-2">
-          <div className="w-12 h-12 bg-cmc-blue rounded-xl flex items-center justify-center text-white text-lg font-bold mx-auto">
-            C
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-cmc-surface-2 text-2xl">
+            🐋
           </div>
-          <h1 className="text-base font-bold">Crypto Sell Tracker</h1>
-          <p className="text-xs text-cmc-text-muted">Masukkan password untuk melanjutkan</p>
+          <h1 className="text-base font-bold">Whale Flow</h1>
+          <p className="text-xs text-cmc-text-muted">Enter the shared password to continue</p>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-cmc-surface border border-cmc-border rounded-2xl p-5 space-y-4">
@@ -63,7 +63,7 @@ export default function LoginPage() {
             disabled={submitting}
             className="w-full text-sm font-semibold py-3 bg-cmc-blue hover:bg-cmc-blue-dim text-white rounded-xl transition-colors disabled:opacity-50"
           >
-            {submitting ? "Memeriksa..." : "Masuk"}
+            {submitting ? "Checking…" : "Sign in"}
           </button>
         </form>
       </div>

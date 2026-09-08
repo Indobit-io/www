@@ -3,8 +3,10 @@ import { NextResponse, type NextRequest } from "next/server";
 // Single shared password auth. Disabled entirely when APP_PASSWORD is unset
 // (local dev). Cookie carries sha256(APP_PASSWORD), set by /api/login.
 
-const AUTH_COOKIE = "cst_auth";
-const PUBLIC_PATHS = ["/login", "/api/login"];
+const AUTH_COOKIE = "wft_auth";
+// /api/cron is excluded on purpose: Vercel's scheduler cannot carry the shared
+// password, so those routes enforce CRON_SECRET themselves instead.
+const PUBLIC_PATHS = ["/login", "/api/login", "/api/cron"];
 
 async function sha256Hex(s: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));

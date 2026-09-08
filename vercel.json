@@ -1,9 +1,9 @@
 {
   "framework": "nextjs",
   "crons": [
-    {
-      "path": "/api/fetch-data",
-      "schedule": "0 0 * * *"
-    }
+    { "path": "/api/cron/flow", "schedule": "*/10 * * * *" },
+    { "path": "/api/cron/prices", "schedule": "7 * * * *" },
+    { "path": "/api/cron/whales", "schedule": "23 */6 * * *" },
+    { "path": "/api/cron/universe", "schedule": "41 3 * * *" }
   ]
 }
