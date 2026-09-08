@@ -63,11 +63,37 @@ Every tuning knob is documented in `.env.local.example`.
 
 ### Deploying
 
-`vercel.json` schedules `flow` every 10 minutes, `prices` hourly, `whales` every
-6 hours, and `universe` daily. **Vercel's Hobby plan only allows a small number
-of cron jobs at daily granularity** — on Hobby, replace the four entries with a
-single daily `/api/cron/all`, or run the schedule elsewhere and hit the
-endpoints over HTTP with the `CRON_SECRET` bearer token.
+`vercel.json` ships a single daily `/api/cron/all`, because **Vercel's Hobby
+plan only permits daily cron jobs** and rejects the deployment outright for
+anything more frequent.
+
+Daily is enough to keep the deploy green, but it is *not* enough to make the
+correlation meaningful: each `flow` run advances a token's cursor by at most
+`MAX_BLOCK_SPAN` blocks (~2.7 hours of Ethereum at the default 800), so a
+once-a-day pipeline permanently falls further behind the chain. Pick one of:
+
+- **Vercel Pro** — restore the real schedule in `vercel.json`:
+
+  ```json
+  "crons": [
+    { "path": "/api/cron/flow",     "schedule": "*/10 * * * *" },
+    { "path": "/api/cron/prices",   "schedule": "7 * * * *" },
+    { "path": "/api/cron/whales",   "schedule": "23 */6 * * *" },
+    { "path": "/api/cron/universe", "schedule": "41 3 * * *" }
+  ]
+  ```
+
+- **Schedule externally** — drop the `crons` block entirely and drive the same
+  endpoints from GitHub Actions, cron-job.org, or any scheduler that can send
+  a header:
+
+  ```
+  curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://<host>/api/cron/flow
+  ```
+
+Note that `/api/cron/all` runs all four jobs in sequence and can exceed the
+function time limit on a throttled CoinGecko tier. Hitting the four endpoints
+separately is more reliable than the combined job wherever you can.
 
 ## Working on the UI without chain access
 

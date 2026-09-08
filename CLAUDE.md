@@ -41,6 +41,11 @@ Order matters — the universe defines what to price, prices are needed to value
 transfers, and the registry is built from those transfers. `/api/cron/all` runs
 all four in sequence.
 
+`vercel.json` ships a single daily `/api/cron/all` because Vercel's Hobby plan
+rejects any cron more frequent than daily. That keeps the deploy green but
+starves the ingester — see the deploying section in `README.md` for the real
+schedule and the external-scheduler alternative.
+
 ## Data model
 - `tokens` — symbol, CoinGecko id, chain + contract + decimals, market rank,
   `tracked` flag, and `last_block` (the ingest cursor)
