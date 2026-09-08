@@ -4,6 +4,6 @@ export const dynamic = "force-dynamic";
 
 export async function POST() {
   const res = NextResponse.json({ ok: true });
-  res.cookies.set("cst_auth", "", { httpOnly: true, path: "/", maxAge: 0 });
+  res.cookies.set("wft_auth", "", { httpOnly: true, path: "/", maxAge: 0 });
   return res;
 }

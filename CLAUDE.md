@@ -1,76 +1,140 @@
-# Crypto Sell Tracker
+# Whale Flow
 
-Track a crypto purchase and sell it off in N batches (default 6), watching cash, remaining crypto, and P/L along the way. No loans, no interest — just buy price vs sell price.
+Track the 500 largest on-chain movers, see which tokens they are moving, and
+test whether that flow has any statistical relationship to price.
+
+The app reads live data. It ships no dataset and simulates nothing — without
+`DATABASE_URL` and `ETHERSCAN_API_KEY` every page renders setup instructions
+instead of numbers.
 
 ## Commands
-- `npm run dev` — Start dev server on port 3000
-- `npm run build` — Production build
+- `npm run dev` — dev server on port 3000
+- `npm run build` — production build
+- `npm run typecheck` — tsc, no emit
+- `npm test` — pure unit tests for the statistics (offline)
+- `DATABASE_URL=… npm run test:db` — end-to-end pipeline tests against real Postgres
+- `DATABASE_URL=… node scripts/seed-demo.mjs` — synthetic data for UI work
+  (sets a `demo_data` flag that banners every page; `--clear` removes it)
 
 ## Architecture
-- Next.js App Router + TypeScript + Tailwind
-- Postgres via `pg` (DATABASE_URL env var); tables auto-created on first query
-- Multi-asset live prices (XRP/BTC/ETH/SOL/BNB/ADA/DOGE) from CoinGecko with Binance+FX fallback (`lib/coingecko.ts`), polled every 2s client-side via `/api/price?asset=`
-- Optional shared-password auth: set `APP_PASSWORD` to protect all pages/APIs (`proxy.ts` + `/login`); disabled when unset
-- Optional `COINGECKO_API_KEY` for higher rate limits
-- UI in Indonesian, CoinMarketCap-inspired dark theme (`cmc-*` Tailwind tokens)
+- Next.js App Router + TypeScript + Tailwind, CoinMarketCap-style dark theme (`cmc-*` tokens)
+- Postgres via `pg`; schema created on first query (`lib/db.ts`)
+- On-chain reads via Etherscan V2 — one endpoint, one key, `chainid` switches chain
+- Token universe and price history from CoinGecko; **no contract address is
+  hardcoded anywhere**, they are resolved from CoinGecko's platform map and
+  decimals are read on-chain via `decimals()`
+- Shared-password auth (`APP_PASSWORD`) via `proxy.ts`; `/api/cron/*` is exempt
+  and enforces `CRON_SECRET` instead, because Vercel's scheduler cannot log in
 
-## Data Model
-- `positions` — one crypto purchase: asset symbol, qty bought (`xrp_qty` — legacy column name, holds any asset), buy price (IDR), planned number of sell batches (`total_batches`, default 6), buy date, notes
-- `sales` — one row per executed sell batch: batch number (unique per position), sale date, sell price, qty sold, notes
-- `batch_targets` — optional per-batch sell target price (unique per position+batch); UI shows "tercapai" when live price ≥ target
+## The pipeline
+Four idempotent jobs, each on its own cron and each runnable by hand from
+`/status`:
 
-## Core Math (`lib/calc.ts`)
-- Cash = Σ qty_sold × sell_price (accumulates with each batch)
-- Remaining crypto = qty_bought − Σ qty_sold (reduced by each sell)
-- Realized P/L = Σ qty_sold × (sell_price − buy_price)
-- Unrealized P/L = remaining qty × (live price − buy_price)
-- Total portfolio = cash + remaining qty × live price
-- Break-even price for remaining coins = (purchase cost − cash) / remaining qty; null once cash covers the modal
-- Suggested batch qty = remaining qty / batches left (even split)
+| Job | Endpoint | Does |
+|---|---|---|
+| `universe` | `/api/cron/universe` | CoinGecko market-cap ranking → tokens + contracts + decimals |
+| `prices` | `/api/cron/prices` | Hourly price history for tracked tokens |
+| `flow` | `/api/cron/flow` | Walk ERC-20 Transfer logs from each token's block cursor |
+| `whales` | `/api/cron/whales` | Recompute the top-N registry from stored flow |
 
-## File Structure
+Order matters — the universe defines what to price, prices are needed to value
+transfers, and the registry is built from those transfers. `/api/cron/all` runs
+all four in sequence.
+
+`vercel.json` ships a single daily `/api/cron/all` because Vercel's Hobby plan
+rejects any cron more frequent than daily. That keeps the deploy green but
+starves the ingester — see the deploying section in `README.md` for the real
+schedule and the external-scheduler alternative.
+
+## Data model
+- `tokens` — symbol, CoinGecko id, chain + contract + decimals, market rank,
+  `tracked` flag, and `last_block` (the ingest cursor)
+- `whales` — one row per address, with volume/inflow/outflow/counterparty counts
+  over the trailing window, a `rank`, an `in_top` flag, an inferred `kind`, and
+  an optional manual `label`. Rows are never deleted, only demoted.
+- `transfers` — one row per large Transfer, unique on `(chain_id, tx_hash, log_index)`
+- `price_points` — hourly USD price per token
+- `ingest_runs` — per-run log with timing, detail JSON, and errors
+- `app_meta` — key/value; currently just the demo-data flag
+
+## How a whale is defined
+There is no curated address list. Every cycle, `rebuildWhales` ranks addresses
+by USD moved over the trailing window and takes the top `WHALE_COUNT`.
+Membership is earned from behaviour and lost the same way. Token contracts, the
+zero address and the burn address are excluded.
+
+`kind` is inferred, never verified:
+- `hub` — very high transfer count across very many counterparties (exchange hot
+  wallets, bridges, routers)
+- `contract` / `wallet` — from `eth_getCode`, filled in a bounded slice per run
+- `unknown` — not yet checked
+
+## The correlation (`lib/stats.ts`, `lib/analysis.ts`)
+Netflow per token per hour is whale inflow minus outflow, so a transfer between
+two tracked whales nets to zero. Returns are hourly log returns. The two are
+correlated at every lag from −6h to +6h.
+
+Four deliberate choices keep the number honest:
+1. **Spearman alongside Pearson.** Flow is violently heavy-tailed; one $400M
+   transfer can carry a Pearson coefficient on its own. Divergence between the
+   two raises a warning on the page.
+2. **Bonferroni.** Scanning 13 lags is 13 hypothesis tests, so significance uses
+   `0.05 / lags`, not a bare `p < 0.05`.
+3. **Lag sign is reported, not hidden.** A negative best lag means price moved
+   first and whales followed — reactive flow with no predictive value. It gets
+   its own verdict.
+4. **Sample size is surfaced.** `activeBuckets` counts hours that actually had
+   flow. Under 30 the verdict is forced to `insufficient-data`.
+
+`npm test` verifies all of this, including that a planted lead is recovered at
+the right lag and that unrelated series do **not** clear the threshold.
+
+## File structure
 ```
-proxy.ts                          — Shared-password auth (APP_PASSWORD); skips /login
+proxy.ts                          — shared-password auth
 app/
-  page.tsx                        — Dashboard: position cards, aggregate totals, export links, logout
-  analytics/page.tsx              — Portfolio analytics: totals, allocation, monthly/cumulative P/L, sale stats
-  login/page.tsx                  — Password form (when APP_PASSWORD set)
-  positions/new/page.tsx          — Create position (asset, qty, buy price, N batches)
-  positions/[id]/page.tsx         — Detail: live status, progress, price history, chart, batch table, danger zone
-  positions/[id]/edit/page.tsx    — Edit position (validates against already-sold batches)
-  positions/[id]/sell/page.tsx    — Record/edit a sell batch (prefills even-split qty or existing sale)
+  page.tsx                        — movers: tokens ranked by whale activity vs their own baseline
+  whales/page.tsx                 — the 500, filterable by kind, searchable
+  whales/[address]/page.tsx       — per-whale token breakdown + transfers + label editor
+  tokens/[symbol]/page.tsx        — correlation report: verdict, lag scan, scatter, caveats
+  flow/page.tsx                   — live tail of large transfers
+  status/page.tsx                 — pipeline state, manual job triggers, known limits
+  login/page.tsx
   api/
-    positions/route.ts            — GET list / POST create
-    positions/[id]/route.ts       — GET / PATCH (whitelisted fields) / DELETE
-    positions/[id]/sales/route.ts — GET / POST (upsert by batch, validates qty ≤ remaining) / DELETE
-    positions/[id]/targets/route.ts — GET / POST (upsert by batch) / DELETE
-    price/route.ts                — Live price, ?asset= param (1.5s server cache)
-    xrp-price/route.ts            — Back-compat alias for /api/price?asset=XRP
-    price-history/route.ts        — CoinGecko market_chart, ?asset=&days=7|30|90 (5min cache)
-    export/route.ts               — JSON backup; ?format=csv for sales ledger
-    login/route.ts, logout/route.ts — Auth cookie set/clear
+    cron/[job]/route.ts           — universe | prices | flow | whales | all
+    movers, whales, whales/[address], tokens, correlation, transfers, status
 lib/
-  db.ts          — pg pool, schema init, Position/Sale/BatchTarget CRUD, export queries
-  calc.ts        — buildBatches, buildSummary, valueAtPrice (pure functions)
-  analytics.ts   — buildPortfolioAnalytics: totals, per-asset, monthly, cumulative, sale stats (pure)
-  coingecko.ts   — SUPPORTED_ASSETS, price + history fetch with fallback
-  price-cache.ts — short-TTL server-side price cache
-  fmt.ts         — idr/qty/pct/date/pnlColor formatters (qty takes asset symbol)
-components/
-  PositionCard.tsx      — Dashboard card
-  LiveStatus.tsx        — Polls price every 2s; total value, cash, crypto, P/L
-  BatchTable.tsx        — Batch history: inline target editing, edit/delete sold batches, notes
-  PositionChart.tsx     — Cash vs crypto vs total per batch (recharts)
-  MonthlyPnlChart.tsx   — Realized P/L per month, green/red by sign (recharts)
-  CumulativePnlChart.tsx — Cumulative cash + realized P/L over time (recharts)
-  PriceHistoryChart.tsx — Market price vs buy/break-even lines, 7/30/90d (recharts)
-  DeletePositionButton.tsx — Two-step confirm delete
-  LogoutButton.tsx      — Clears auth cookie
+  chains.ts       — chain registry + explorer URLs
+  etherscan.ts    — V2 client, serialized queue, retry on transient failures
+  erc20.ts        — Transfer log decoding, decimals(), unit scaling via BigInt
+  coingecko.ts    — markets, platform map, market_chart
+  db.ts           — pool, schema, all queries
+  ingest.ts       — the four jobs
+  stats.ts        — pearson, spearman, Student-t p-value, lag scan, hit rate (pure)
+  analysis.ts     — movers scoring + correlation report assembly
+  fmt.ts          — usd/price/qty/pct/coef/addr/ago formatters
+components/       — Nav, Stat, Empty, SetupNotice, DemoBanner, LabelEditor,
+                    JobRunner, TransferFeed, LagChart, FlowPriceChart, FlowReturnScatter
+tests/            — stats.test.ts (offline), pipeline.test.ts (needs Postgres)
+scripts/          — seed-demo.mjs
 ```
 
 ## Conventions
-- All money in IDR, stored as NUMERIC, formatted with `idr()` (compact: `jt`/`M`)
-- Sales upsert on (position_id, batch_number) — re-submitting a batch edits it
-- API rejects selling more than remaining qty (excluding the batch being edited)
-- PATCH /api/positions/[id] whitelists columns (updatePosition interpolates keys into SQL) and rejects total_batches/qty below what's already sold
-- Timestamps/dates ISO 8601
+- All money in USD, stored as `NUMERIC`. `usd()` for aggregates (compact,
+  `K`/`M`/`B`), `price()` for asset prices (precise).
+- Addresses and tx hashes are stored lowercase.
+- Netflow sign: **positive = whales received**.
+- Timestamps ISO 8601, everything in UTC.
+- Transfers upsert on `(chain_id, tx_hash, log_index)`, so re-walking a block
+  range is always safe.
+
+## Limits worth remembering
+- `eth_getLogs` has no value filter, so every Transfer in a block range is
+  fetched and then discarded below `MIN_TRANSFER_USD`. On a token like USDT that
+  burns the call budget fast — hence the bounded block span, the per-run budget,
+  and least-recently-ingested rotation across tokens.
+- Coverage has holes by design. Each cycle advances a token's cursor by at most
+  `MAX_BLOCK_SPAN` blocks; if the ingester falls behind the chain it stays
+  behind until it catches up.
+- Transfers are valued at the hourly price, not the exact block.
+- Whale identity is inferred, never verified.

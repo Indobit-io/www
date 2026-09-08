@@ -1,9 +1,6 @@
 {
   "framework": "nextjs",
   "crons": [
-    {
-      "path": "/api/fetch-data",
-      "schedule": "0 0 * * *"
-    }
+    { "path": "/api/cron/all", "schedule": "41 3 * * *" }
   ]
 }

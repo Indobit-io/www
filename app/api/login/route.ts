@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-const AUTH_COOKIE = "cst_auth";
+const AUTH_COOKIE = "wft_auth";
 
 function sha256Hex(s: string): string {
   return createHash("sha256").update(s).digest("hex");
